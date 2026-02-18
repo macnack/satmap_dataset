@@ -159,3 +159,11 @@ def test_render_config_requires_dimensions_when_auto_size_disabled() -> None:
             dataset_manifest=Path("artifacts/dataset_manifest_download.json"),
             auto_size_from_bbox=False,
         )
+
+
+def test_render_config_accepts_jpeg95_compression() -> None:
+    config = RenderConfig(
+        dataset_manifest=Path("artifacts/dataset_manifest_download.json"),
+        compression="jpeg95",
+    )
+    assert config.compression == "jpeg95"

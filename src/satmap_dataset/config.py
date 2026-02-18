@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -134,9 +135,14 @@ class RenderConfig(BaseModel):
     @field_validator("compression")
     @classmethod
     def validate_compression(cls, value: str) -> str:
-        if value != "deflate":
-            raise ValueError("compression must be 'deflate'")
-        return value
+        normalized = value.strip().lower()
+        if normalized == "deflate":
+            return normalized
+        if normalized == "jpeg":
+            return normalized
+        if re.fullmatch(r"jpeg([1-9]\d?|100)", normalized):
+            return normalized
+        raise ValueError("compression must be 'deflate', 'jpeg', or 'jpegNN' (e.g. jpeg95)")
 
     @field_validator("overview_levels")
     @classmethod
@@ -237,8 +243,10 @@ class RunConfig(BaseModel):
         allowed_resample = {"bilinear", "nearest"}
         if self.resample_method not in allowed_resample:
             raise ValueError(f"resample_method must be one of {sorted(allowed_resample)}")
-        if self.compression != "deflate":
-            raise ValueError("compression must be 'deflate'")
+        compression = self.compression.strip().lower()
+        if compression not in {"deflate", "jpeg"} and not re.fullmatch(r"jpeg([1-9]\d?|100)", compression):
+            raise ValueError("compression must be 'deflate', 'jpeg', or 'jpegNN' (e.g. jpeg95)")
+        self.compression = compression
         if not self.overview_levels or any(level <= 1 for level in self.overview_levels):
             raise ValueError("overview_levels must contain integers > 1")
         if (self.target_width is None) != (self.target_height is None):

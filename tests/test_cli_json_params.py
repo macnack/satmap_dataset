@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from satmap_dataset import cli
-from satmap_dataset.config import DownloadConfig, IndexConfig, RunConfig
+from satmap_dataset.config import DownloadConfig, IndexConfig, RenderConfig, RunConfig
 
 
 def test_download_json_command_loads_config_and_runs(monkeypatch, tmp_path: Path) -> None:
@@ -147,6 +147,48 @@ def test_run_location_json_uses_base_and_generates_paths(monkeypatch, tmp_path: 
     assert str(cfg.download_root).endswith("downloads_zelazny_most")
     assert str(cfg.render_root).endswith("rendered_zelazny_most")
     assert str(cfg.artifacts_dir).endswith("artifacts_zelazny_most")
+
+
+def test_render_location_json_uses_base_and_generates_paths(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, RenderConfig] = {}
+
+    def fake_run(config: RenderConfig):
+        captured["config"] = config
+        return 0, config.output_json
+
+    monkeypatch.setattr(cli.render, "run", fake_run)
+
+    base = {
+        "mode": "hybrid",
+        "profile": "reference",
+        "srs": "EPSG:2180",
+        "compression": "jpeg95",
+    }
+    location = {
+        "location_name": "Żelazny Most",
+        "center_lat": 51.514264,
+        "center_lon": 16.162344,
+    }
+    base_path = tmp_path / "configs" / "run" / "base.json"
+    location_path = tmp_path / "configs" / "run" / "locations" / "zelazny_most.json"
+    base_path.parent.mkdir(parents=True, exist_ok=True)
+    location_path.parent.mkdir(parents=True, exist_ok=True)
+    base_path.write_text(json.dumps(base), encoding="utf-8")
+    location_path.write_text(json.dumps(location), encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli.app,
+        ["render-location-json", str(location_path), "--base-json", str(base_path)],
+    )
+
+    assert result.exit_code == 0
+    assert "config" in captured
+    cfg = captured["config"]
+    assert cfg.compression == "jpeg95"
+    assert str(cfg.render_root).endswith("rendered_zelazny_most")
+    assert str(cfg.dataset_manifest).endswith("artifacts_zelazny_most/dataset_manifest_download.json")
+    assert str(cfg.output_json).endswith("artifacts_zelazny_most/dataset_manifest_render.json")
 
 
 def test_run_all_location_json_runs_each_file(monkeypatch, tmp_path: Path) -> None:

@@ -281,6 +281,19 @@ def _build_validate_config_from_base_and_location(*, base_json: Path, location_j
     return ValidateConfig.model_validate(payload)
 
 
+def _build_render_config_from_base_and_location(*, base_json: Path, location_json: Path) -> RenderConfig:
+    base_payload = _load_params_json_dict(base_json)
+    location_payload = _load_params_json_dict(location_json)
+    merged: dict[str, object] = dict(base_payload)
+    merged.update(location_payload)
+    repo_root = base_json.resolve().parents[2] if len(base_json.resolve().parents) >= 3 else Path.cwd().resolve()
+    merged = _apply_location_paths_policy(merged, repo_root)
+    artifacts_dir = Path(str(merged.get("artifacts_dir")))
+    merged.setdefault("dataset_manifest", str(artifacts_dir / "dataset_manifest_download.json"))
+    merged.setdefault("output_json", str(artifacts_dir / "dataset_manifest_render.json"))
+    return RenderConfig.model_validate(merged)
+
+
 def _location_files_or_exit(locations_dir: Path) -> list[Path]:
     files = sorted(locations_dir.glob("*.json"))
     if not files:
@@ -855,6 +868,28 @@ def run_location_json_command(
         raise typer.Exit(code=2) from error
 
     exit_code, artifact_path = run_all.run(config)
+    _finish(exit_code, artifact_path)
+
+
+@app.command("render-location-json")
+def render_location_json_command(
+    location_json: Path = typer.Argument(..., help="Path to location JSON (location_name, center_lat, center_lon)."),
+    base_json: Path = typer.Option(
+        Path("configs/run/base.json"),
+        "--base-json",
+        help="Path to base JSON with shared render parameters.",
+    ),
+) -> None:
+    try:
+        config = _build_render_config_from_base_and_location(base_json=base_json, location_json=location_json)
+    except typer.BadParameter as error:
+        console.print(f"[red]{error}[/red]")
+        raise typer.Exit(code=2) from error
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+
+    exit_code, artifact_path = render.run(config)
     _finish(exit_code, artifact_path)
 
 

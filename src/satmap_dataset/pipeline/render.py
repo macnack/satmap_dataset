@@ -691,16 +691,27 @@ def _render_year(
         canvas = _grayworld_normalize(canvas)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    canvas.tiffsave(
-        str(out_path),
-        tile=True,
-        tile_width=tile_size,
-        tile_height=tile_size,
-        compression=compression,
-        pyramid=True,
-        bigtiff=True,
-        predictor="horizontal",
-    )
+    compression_mode = compression.strip().lower()
+    tiffsave_kwargs = {
+        "tile": True,
+        "tile_width": tile_size,
+        "tile_height": tile_size,
+        "pyramid": True,
+        "bigtiff": True,
+    }
+    if compression_mode == "deflate":
+        tiffsave_kwargs["compression"] = "deflate"
+        tiffsave_kwargs["predictor"] = "horizontal"
+    elif compression_mode == "jpeg":
+        tiffsave_kwargs["compression"] = "jpeg"
+        tiffsave_kwargs["Q"] = 90
+    elif compression_mode.startswith("jpeg"):
+        tiffsave_kwargs["compression"] = "jpeg"
+        tiffsave_kwargs["Q"] = int(compression_mode[4:])
+    else:
+        raise ValueError(f"Unsupported compression mode: {compression}")
+
+    canvas.tiffsave(str(out_path), **tiffsave_kwargs)
 
     _ensure_georeferenced_output(out_path, target_bbox, target_width, target_height, target_srs)
     return _mean_rgb(canvas)
