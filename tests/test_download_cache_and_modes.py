@@ -290,3 +290,29 @@ def test_download_rejects_mismatched_wms_bbox_vs_index_bbox(tmp_path: Path) -> N
 
     with pytest.raises(ValueError, match="WMS bbox must match index bbox exactly"):
         downloader.run(config)
+
+
+def test_cached_tiff_valid_when_imagecodecs_missing(monkeypatch, tmp_path: Path) -> None:
+    tiff_path = tmp_path / "tile.tif"
+    tiff_path.write_bytes(b"X" * 1024)
+
+    class _FakePage:
+        imagewidth = 100
+        imagelength = 100
+
+        def asarray(self, maxworkers=1):  # noqa: ARG002
+            raise ValueError("<COMPRESSION.JPEG: 7> requires the 'imagecodecs' package")
+
+    class _FakeTiffFile:
+        def __init__(self, path):  # noqa: ARG002
+            self.pages = [_FakePage()]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ARG002
+            return False
+
+    monkeypatch.setattr(downloader.tifffile, "TiffFile", _FakeTiffFile)
+
+    assert downloader._is_valid_cached_tiff(tiff_path) is True

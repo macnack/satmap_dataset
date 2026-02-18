@@ -556,7 +556,13 @@ def _apply_geotiff_tags_exiftool(out_path: Path, target_bbox: BBox, target_width
     return result.returncode == 0
 
 
-def _apply_geotiff_tags_tifffile(out_path: Path, target_bbox: BBox, target_width: int, target_height: int, srs: str) -> None:
+def _apply_geotiff_tags_tifffile(
+    out_path: Path,
+    target_bbox: BBox,
+    target_width: int,
+    target_height: int,
+    srs: str,
+) -> bool:
     if srs.upper() != "EPSG:2180":
         raise ValueError(f"Unsupported SRS for GeoTIFF tagging: {srs}")
 
@@ -569,55 +575,71 @@ def _apply_geotiff_tags_tifffile(out_path: Path, target_bbox: BBox, target_width
     if temp_path.exists():
         temp_path.unlink()
 
-    with tifffile.TiffFile(out_path) as src, tifffile.TiffWriter(temp_path, bigtiff=True) as dst:
-        for idx, page in enumerate(src.pages):
-            data = page.asarray()
-            tile_w_tag = page.tags.get("TileWidth")
-            tile_h_tag = page.tags.get("TileLength")
-            tile_w = int(tile_w_tag.value) if tile_w_tag is not None else int(page.imagewidth)
-            tile_h = int(tile_h_tag.value) if tile_h_tag is not None else int(page.imagelength)
-            tile = None
-            if tile_w >= 16 and tile_h >= 16 and tile_w % 16 == 0 and tile_h % 16 == 0:
-                tile = (tile_h, tile_w)
+    try:
+        with tifffile.TiffFile(out_path) as src, tifffile.TiffWriter(temp_path, bigtiff=True) as dst:
+            for idx, page in enumerate(src.pages):
+                data = page.asarray()
+                tile_w_tag = page.tags.get("TileWidth")
+                tile_h_tag = page.tags.get("TileLength")
+                tile_w = int(tile_w_tag.value) if tile_w_tag is not None else int(page.imagewidth)
+                tile_h = int(tile_h_tag.value) if tile_h_tag is not None else int(page.imagelength)
+                tile = None
+                if tile_w >= 16 and tile_h >= 16 and tile_w % 16 == 0 and tile_h % 16 == 0:
+                    tile = (tile_h, tile_w)
 
-            compression_tag = page.tags.get("Compression")
-            compression = "deflate"
-            predictor = None
-            if compression_tag is not None and int(compression_tag.value) == 7:
-                compression = "jpeg"
+                compression_tag = page.tags.get("Compression")
+                compression = "deflate"
+                predictor = None
+                if compression_tag is not None and int(compression_tag.value) == 7:
+                    compression = "jpeg"
 
-            extratags = []
-            if idx == 0:
-                extratags.extend(
-                    [
-                        (33550, "d", 3, scale, False),
-                        (33922, "d", 6, tie, False),
-                        (34735, "H", len(geokey), geokey, False),
-                    ]
+                extratags = []
+                if idx == 0:
+                    extratags.extend(
+                        [
+                            (33550, "d", 3, scale, False),
+                            (33922, "d", 6, tie, False),
+                            (34735, "H", len(geokey), geokey, False),
+                        ]
+                    )
+
+                photometric = None
+                if data.ndim == 3 and data.shape[2] in {3, 4}:
+                    photometric = "rgb"
+
+                dst.write(
+                    data,
+                    photometric=photometric,
+                    tile=tile,
+                    compression=compression,
+                    predictor=predictor,
+                    subfiletype=int(page.tags.get("SubfileType", 0).value) if page.tags.get("SubfileType") else 0,
+                    metadata=None,
+                    extratags=extratags,
                 )
-
-            photometric = None
-            if data.ndim == 3 and data.shape[2] in {3, 4}:
-                photometric = "rgb"
-
-            dst.write(
-                data,
-                photometric=photometric,
-                tile=tile,
-                compression=compression,
-                predictor=predictor,
-                subfiletype=int(page.tags.get("SubfileType", 0).value) if page.tags.get("SubfileType") else 0,
-                metadata=None,
-                extratags=extratags,
-            )
+    except Exception as exc:
+        if temp_path.exists():
+            temp_path.unlink()
+        logger.warning(
+            "Render: tifffile GeoTIFF tagging failed for %s (%s); keeping image and writing sidecars only.",
+            out_path,
+            exc,
+        )
+        return False
 
     temp_path.replace(out_path)
+    return True
 
 
 def _ensure_georeferenced_output(out_path: Path, target_bbox: BBox, target_width: int, target_height: int, srs: str) -> None:
     tagged = _apply_geotiff_tags_exiftool(out_path, target_bbox, target_width, target_height, srs)
     if not tagged:
-        _apply_geotiff_tags_tifffile(out_path, target_bbox, target_width, target_height, srs)
+        tagged = _apply_geotiff_tags_tifffile(out_path, target_bbox, target_width, target_height, srs)
+    if not tagged:
+        logger.warning(
+            "Render: geotiff tag injection unavailable for %s; relying on .tfw/.prj sidecars.",
+            out_path,
+        )
     _write_worldfile_and_prj(out_path, target_bbox, target_width, target_height, srs)
 
 

@@ -117,7 +117,13 @@ def _is_valid_cached_tiff(path: Path) -> bool:
             page = tif.pages[0]
             if int(page.imagewidth) <= 0 or int(page.imagelength) <= 0:
                 return False
-            _ = page.asarray(maxworkers=1)
+            try:
+                _ = page.asarray(maxworkers=1)
+            except Exception as exc:
+                # Accept structurally valid TIFF when decode backend is missing
+                # (e.g. JPEG-compressed tiles without imagecodecs installed).
+                if "requires the 'imagecodecs' package" not in str(exc):
+                    raise
         return True
     except Exception:
         try:

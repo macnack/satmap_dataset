@@ -11,11 +11,14 @@ requires-python = ">=3.10"
 dependencies = [
   "httpx",
   "aiofiles",
+  "numpy",
   "pydantic>=2",
   "typer",
   "rich",
+  "Pillow",
   "pyvips",
   "tifffile",
+  "imagecodecs",
 ]
 
 [project.optional-dependencies]

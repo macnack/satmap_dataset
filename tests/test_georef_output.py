@@ -39,3 +39,25 @@ def test_apply_geotiff_tags_and_sidecars(tmp_path: Path) -> None:
     tfw_lines = [line.strip() for line in tfw.read_text(encoding="ascii").splitlines() if line.strip()]
     assert len(tfw_lines) == 6
     assert "EPSG\",\"2180" in prj.read_text(encoding="ascii")
+
+
+def test_georef_fallback_writes_sidecars_when_tifftagging_unavailable(monkeypatch, tmp_path: Path) -> None:
+    out = tmp_path / "year_2023.tif"
+    data = [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]
+    tifffile.imwrite(out, data, photometric="rgb", compression="deflate")
+
+    bbox = render.BBox(min_x=210300.0, min_y=521900.0, max_x=210302.0, max_y=521902.0)
+    monkeypatch.setattr(render, "_apply_geotiff_tags_exiftool", lambda *args, **kwargs: False)
+    monkeypatch.setattr(render, "_apply_geotiff_tags_tifffile", lambda *args, **kwargs: False)
+
+    render._ensure_georeferenced_output(
+        out_path=out,
+        target_bbox=bbox,
+        target_width=2,
+        target_height=2,
+        srs="EPSG:2180",
+    )
+
+    assert out.exists()
+    assert out.with_suffix(".tfw").exists()
+    assert out.with_suffix(".prj").exists()

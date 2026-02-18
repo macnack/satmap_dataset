@@ -26,6 +26,13 @@ Current limitations:
 python -m pip install -e ".[dev]"
 ```
 
+Alternative (requirements files):
+
+```bash
+python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
+```
+
 ## CLI examples
 
 ```bash

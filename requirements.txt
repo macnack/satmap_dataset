@@ -1,0 +1,10 @@
+httpx
+aiofiles
+numpy
+pydantic>=2
+typer
+rich
+Pillow
+pyvips
+tifffile
+imagecodecs
