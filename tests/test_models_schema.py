@@ -59,6 +59,7 @@ def test_manifest_models_json_roundtrip() -> None:
         tile_sources_by_year={2015: {"placeholder": "https://example.com/2015.tif"}},
         passed=False,
         errors=["min_years policy failed"],
+        run_parameters={"bbox": "210300,521900,210500,522100", "min_years": 2},
     )
     dataset_manifest = DatasetManifest(
         stage="download",
@@ -73,9 +74,9 @@ def test_manifest_models_json_roundtrip() -> None:
         profile="reference",
         px_per_meter=15.0,
         years_source_map={2015: "wfs"},
-        coverage_ratio_by_year={2015: 1.0},
         color_qc_by_year={2015: {"mean_rgb": [120.0, 121.0, 118.0], "delta_to_wms_reference": None}},
         passed=True,
+        run_parameters={"mode": "hybrid", "bbox": "210300,521900,210500,522100"},
     )
     validation_report = ValidationReport(
         requested_years=[2015, 2016],
@@ -85,6 +86,7 @@ def test_manifest_models_json_roundtrip() -> None:
         strict_years=False,
         min_years=1,
         passed=True,
+        run_parameters={"strict_years": False, "min_years": 1},
     )
     availability_report = YearAvailabilityReport(
         year_start=2015,
@@ -99,6 +101,7 @@ def test_manifest_models_json_roundtrip() -> None:
         strict_years=False,
         min_years=1,
         passed=True,
+        run_parameters={"strict_years": False, "min_years": 1},
     )
 
     restored_index = IndexManifest.model_validate_json(index_manifest.model_dump_json())
@@ -109,10 +112,14 @@ def test_manifest_models_json_roundtrip() -> None:
     )
 
     assert restored_index.year_start == 2015
+    assert restored_index.run_parameters["min_years"] == 2
     assert restored_dataset.stage == "download"
+    assert restored_dataset.run_parameters["mode"] == "hybrid"
     assert restored_dataset.profile == "reference"
     assert restored_report.missing_years == [2016]
+    assert restored_report.run_parameters["min_years"] == 1
     assert restored_availability.years_available_wfs == [2015]
+    assert restored_availability.run_parameters["min_years"] == 1
 
 
 def test_required_fields_and_types() -> None:
@@ -151,12 +158,4 @@ def test_render_config_requires_dimensions_when_auto_size_disabled() -> None:
         RenderConfig(
             dataset_manifest=Path("artifacts/dataset_manifest_download.json"),
             auto_size_from_bbox=False,
-        )
-
-
-def test_render_config_rejects_invalid_calibration_transform() -> None:
-    with pytest.raises(ValueError):
-        RenderConfig(
-            dataset_manifest=Path("artifacts/dataset_manifest_download.json"),
-            calibration_transform="rigid",
         )

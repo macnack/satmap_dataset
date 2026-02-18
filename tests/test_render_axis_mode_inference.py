@@ -101,7 +101,7 @@ def test_render_run_applies_inferred_swapped_axis_mode_without_calibration(
             target_height=target_height,
             srs=target_srs,
         )
-        return 1.0, [64.0, 64.0, 64.0]
+        return [64.0, 64.0, 64.0]
 
     monkeypatch.setattr(render, "_render_year", fake_render_year)
 
@@ -112,7 +112,6 @@ def test_render_run_applies_inferred_swapped_axis_mode_without_calibration(
         profile="reference",
         px_per_meter=0.001,  # 2000m AOI -> 2px output, tiny/faster test artifact.
         target_srs="EPSG:2180",
-        wfs_global_calibration=False,
         output_json=tmp_path / "dataset_manifest_render.json",
     )
 
@@ -121,5 +120,4 @@ def test_render_run_applies_inferred_swapped_axis_mode_without_calibration(
     assert captured["source_axis_mode"] == "swapped"
 
     out_manifest = DatasetManifest.model_validate_json(out_manifest_path.read_text(encoding="utf-8"))
-    assert out_manifest.calibration_source_axis_mode == "swapped"
     assert out_manifest.passed is True

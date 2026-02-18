@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -26,7 +26,8 @@ class IndexManifest(BaseModel):
     bbox: str
     srs: str
     strict_years: bool = False
-    min_years: int = 2
+    min_years: int = 1
+    wfs_bbox_axes_swapped: bool = False
     years_requested: list[int]
     year_statuses: list[YearStatus]
     years_available_wfs: list[int]
@@ -34,9 +35,12 @@ class IndexManifest(BaseModel):
     years_excluded_with_reason: dict[int, str] = Field(default_factory=dict)
     common_tile_ids: list[str] = Field(default_factory=list)
     tile_sources_by_year: dict[int, dict[str, str]] = Field(default_factory=dict)
+    tile_bboxes_by_year: dict[int, dict[str, list[float]]] = Field(default_factory=dict)
     passed: bool
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    aoi_preview_html: str | None = None
+    run_parameters: dict[str, Any] = Field(default_factory=dict)
 
 
 class DatasetManifest(BaseModel):
@@ -49,6 +53,7 @@ class DatasetManifest(BaseModel):
     years_excluded_with_reason: dict[int, str] = Field(default_factory=dict)
     common_tile_ids: list[str] = Field(default_factory=list)
     tile_sources_by_year: dict[int, dict[str, str]] = Field(default_factory=dict)
+    tile_bboxes_by_year: dict[int, dict[str, list[float]]] = Field(default_factory=dict)
     assets: list[str] = Field(default_factory=list)
     source_manifest: str | None = None
     mode: Literal["wms_tiled", "wfs_render", "hybrid"] = "hybrid"
@@ -59,27 +64,18 @@ class DatasetManifest(BaseModel):
     profile: Literal["train", "reference"] | None = None
     px_per_meter: float | None = None
     years_source_map: dict[int, Literal["wfs", "wms", "wms_fallback"]] = Field(default_factory=dict)
-    coverage_ratio_by_year: dict[int, float] = Field(default_factory=dict)
+    forced_wms_years: list[int] = Field(default_factory=list)
     color_qc_by_year: dict[int, dict[str, float | list[float] | None]] = Field(default_factory=dict)
     resample_method: str | None = None
     render_backend: Literal["pyvips"] | None = None
     asset_stats: dict[str, dict[str, int | str | None]] = Field(default_factory=dict)
     pixel_profile: str = "RGB_U8"
-    wfs_global_calibration: bool = False
-    calibration_reference_year: int | None = None
-    calibration_transform: str | None = None
-    calibration_source_axis_mode: Literal["normal", "swapped"] | None = None
-    calibration_max_error_px: float | None = None
-    calibration_fit_error_px: float | None = None
-    calibration_matrix: list[float] | None = None
-    calibration_report_path: str | None = None
-    calibration_status_by_year: dict[int, Literal["applied", "skipped_wms", "disabled"]] = Field(default_factory=dict)
-    calibration_error_px_by_year: dict[int, float] = Field(default_factory=dict)
     render_cache_signature: str | None = None
     diagnostics_report_path: str | None = None
     diagnostics_quicklook_dir: str | None = None
     passed: bool = True
     notes: str | None = None
+    run_parameters: dict[str, Any] = Field(default_factory=dict)
 
 
 class ValidationReport(BaseModel):
@@ -90,10 +86,11 @@ class ValidationReport(BaseModel):
     years_excluded_with_reason: dict[int, str] = Field(default_factory=dict)
     missing_years: list[int]
     strict_years: bool = False
-    min_years: int = 2
+    min_years: int = 1
     passed: bool
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    run_parameters: dict[str, Any] = Field(default_factory=dict)
 
 
 class YearAvailabilityReport(BaseModel):
@@ -103,13 +100,16 @@ class YearAvailabilityReport(BaseModel):
     year_end: int
     bbox: str
     srs: str
+    wfs_bbox_axes_swapped: bool = False
     years_requested: list[int]
     year_statuses: list[YearStatus]
     years_available_wfs: list[int]
     years_included: list[int]
     years_excluded_with_reason: dict[int, str] = Field(default_factory=dict)
     strict_years: bool = False
-    min_years: int = 2
+    min_years: int = 1
     passed: bool
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    aoi_preview_html: str | None = None
+    run_parameters: dict[str, Any] = Field(default_factory=dict)

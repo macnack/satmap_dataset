@@ -28,7 +28,7 @@ class IndexConfig(BaseModel):
     srs: str = "EPSG:2180"
     strict_years: bool = False
     experimental_wfs_swap_bbox_axes: bool = False
-    min_years: int = Field(default=2, ge=1)
+    min_years: int = Field(default=1, ge=1)
     output_json: Path = Path("artifacts/index_manifest.json")
     year_availability_output_json: Path = Path("artifacts/year_availability_report.json")
 
@@ -57,6 +57,7 @@ class DownloadConfig(BaseModel):
     srs: str = "EPSG:2180"
     px_per_meter: float = Field(default=15.0, gt=0.0)
     wms_fallback_missing_years: bool = True
+    force_wms_years: list[int] = Field(default_factory=list)
     concurrency: int = Field(default=6, ge=1, le=64)
     retries: int = Field(default=3, ge=0, le=20)
     retry_delay: float = Field(default=1.0, gt=0.0)
@@ -80,6 +81,9 @@ class DownloadConfig(BaseModel):
             raise ValueError("bbox is required for profile='reference' and for modes using WMS")
         if self.bbox is not None:
             _validate_bbox(self.bbox)
+        self.force_wms_years = sorted(set(self.force_wms_years))
+        if self.mode == "wfs_render" and self.force_wms_years:
+            raise ValueError("force_wms_years requires mode 'hybrid' or 'wms_tiled'")
         return self
 
 
@@ -107,10 +111,6 @@ class RenderConfig(BaseModel):
     compression: str = "deflate"
     overview_levels: list[int] = Field(default_factory=lambda: [2, 4, 8, 16])
     wms_fallback_missing_years: bool = True
-    wfs_global_calibration: bool = False
-    calibration_reference_year: int | None = Field(default=None, ge=1900)
-    calibration_transform: str = "affine"
-    calibration_max_error_px: float = Field(default=2.0, gt=0.0)
     disable_color_norm: bool = False
     experimental_force_srgb_from_ycbcr: bool = False
     experimental_per_year_color_norm: bool = False
@@ -155,11 +155,6 @@ class RenderConfig(BaseModel):
         allowed_profiles = {"train", "reference"}
         if self.profile not in allowed_profiles:
             raise ValueError(f"profile must be one of {sorted(allowed_profiles)}")
-        allowed_calibration_transforms = {"affine", "homography"}
-        if self.calibration_transform not in allowed_calibration_transforms:
-            raise ValueError(
-                f"calibration_transform must be one of {sorted(allowed_calibration_transforms)}"
-            )
         if (self.target_width is None) != (self.target_height is None):
             raise ValueError("target_width and target_height must be set together")
         if not self.auto_size_from_bbox and (self.target_width is None or self.target_height is None):
@@ -171,7 +166,7 @@ class ValidateConfig(BaseModel):
     dataset_manifest: Path = Path("artifacts/dataset_manifest_render.json")
     requested_years: list[int] = Field(default_factory=list)
     strict_years: bool = False
-    min_years: int = Field(default=2, ge=1)
+    min_years: int = Field(default=1, ge=1)
     output_json: Path = Path("artifacts/validation_report.json")
 
     @field_validator("requested_years")
@@ -187,15 +182,12 @@ class RunConfig(BaseModel):
     srs: str = "EPSG:2180"
     strict_years: bool = False
     experimental_wfs_swap_bbox_axes: bool = False
-    min_years: int = Field(default=2, ge=1)
+    min_years: int = Field(default=1, ge=1)
     mode: str = "hybrid"
     profile: str = "train"
     px_per_meter: float = Field(default=15.0, gt=0.0)
     wms_fallback_missing_years: bool = True
-    wfs_global_calibration: bool = False
-    calibration_reference_year: int | None = Field(default=None, ge=1900)
-    calibration_transform: str = "affine"
-    calibration_max_error_px: float = Field(default=2.0, gt=0.0)
+    force_wms_years: list[int] = Field(default_factory=list)
     disable_color_norm: bool = False
     target_width: int | None = Field(default=None, ge=1)
     target_height: int | None = Field(default=None, ge=1)
@@ -239,6 +231,9 @@ class RunConfig(BaseModel):
         allowed_profiles = {"train", "reference"}
         if self.profile not in allowed_profiles:
             raise ValueError(f"profile must be one of {sorted(allowed_profiles)}")
+        self.force_wms_years = sorted(set(self.force_wms_years))
+        if self.mode == "wfs_render" and self.force_wms_years:
+            raise ValueError("force_wms_years requires mode 'hybrid' or 'wms_tiled'")
         allowed_resample = {"bilinear", "nearest"}
         if self.resample_method not in allowed_resample:
             raise ValueError(f"resample_method must be one of {sorted(allowed_resample)}")
@@ -246,11 +241,6 @@ class RunConfig(BaseModel):
             raise ValueError("compression must be 'deflate'")
         if not self.overview_levels or any(level <= 1 for level in self.overview_levels):
             raise ValueError("overview_levels must contain integers > 1")
-        allowed_calibration_transforms = {"affine", "homography"}
-        if self.calibration_transform not in allowed_calibration_transforms:
-            raise ValueError(
-                f"calibration_transform must be one of {sorted(allowed_calibration_transforms)}"
-            )
         if (self.target_width is None) != (self.target_height is None):
             raise ValueError("target_width and target_height must be set together")
         if not self.auto_size_from_bbox and (self.target_width is None or self.target_height is None):

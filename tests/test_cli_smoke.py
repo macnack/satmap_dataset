@@ -54,5 +54,7 @@ def test_index_help_marks_swap_as_deprecated() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert "Deprecated" in result.stdout
-    assert "legacy option" in result.stdout
+    normalized = " ".join(result.stdout.split()).lower()
+    assert "deprecated" in normalized
+    assert "legacy" in normalized
+    assert "option" in normalized

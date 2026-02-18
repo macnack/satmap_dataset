@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import logging
+import re
 import sys
 
 
 class _ColorFormatter(logging.Formatter):
     RESET = "\033[0m"
+    _HTTP_STATUS_PATTERN = re.compile(r"\bHTTP/\d(?:\.\d)?\s+(\d{3})\b")
     COLORS = {
         logging.DEBUG: "\033[36m",     # cyan
         logging.INFO: "\033[32m",      # green
@@ -18,11 +20,24 @@ class _ColorFormatter(logging.Formatter):
         super().__init__(fmt=fmt)
         self.use_color = use_color
 
+    def _httpx_status_override_color(self, record: logging.LogRecord) -> str | None:
+        if record.name != "httpx" and not record.name.startswith("httpx."):
+            return None
+        match = self._HTTP_STATUS_PATTERN.search(record.getMessage())
+        if not match:
+            return None
+        status = int(match.group(1))
+        if status >= 500:
+            return self.COLORS[logging.ERROR]
+        if status >= 400:
+            return self.COLORS[logging.WARNING]
+        return None
+
     def format(self, record: logging.LogRecord) -> str:
         message = super().format(record)
         if not self.use_color:
             return message
-        color = self.COLORS.get(record.levelno)
+        color = self._httpx_status_override_color(record) or self.COLORS.get(record.levelno)
         if not color:
             return message
         return f"{color}{message}{self.RESET}"

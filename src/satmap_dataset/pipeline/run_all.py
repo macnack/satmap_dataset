@@ -34,6 +34,69 @@ def _load_dataset_manifest(path: Path) -> DatasetManifest | None:
         return None
 
 
+def _parse_bbox(value: str) -> tuple[float, float, float, float]:
+    parts = [float(part.strip()) for part in value.split(",")]
+    if len(parts) != 4:
+        raise ValueError("bbox must have 4 values")
+    min_x, min_y, max_x, max_y = parts
+    if min_x >= max_x or min_y >= max_y:
+        raise ValueError("bbox must satisfy min_x<max_x and min_y<max_y")
+    return min_x, min_y, max_x, max_y
+
+
+def _swap_bbox_axes(bbox: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+    min_x, min_y, max_x, max_y = bbox
+    return min_y, min_x, max_y, max_x
+
+
+def _bbox_overlap_area(
+    a: tuple[float, float, float, float],
+    b: tuple[float, float, float, float],
+) -> float:
+    min_x = max(a[0], b[0])
+    min_y = max(a[1], b[1])
+    max_x = min(a[2], b[2])
+    max_y = min(a[3], b[3])
+    if min_x >= max_x or min_y >= max_y:
+        return 0.0
+    return (max_x - min_x) * (max_y - min_y)
+
+
+def _index_manifest_has_swapped_tile_bboxes(manifest: IndexManifest) -> bool:
+    if not manifest.tile_bboxes_by_year:
+        return False
+    try:
+        request_bbox = _parse_bbox(manifest.bbox)
+    except Exception:
+        return False
+
+    samples: list[tuple[float, float, float, float]] = []
+    for year_map in manifest.tile_bboxes_by_year.values():
+        for bbox_value in year_map.values():
+            if len(bbox_value) != 4:
+                continue
+            try:
+                samples.append(tuple(float(v) for v in bbox_value))
+            except Exception:
+                continue
+            if len(samples) >= 25:
+                break
+        if len(samples) >= 25:
+            break
+
+    if not samples:
+        return False
+
+    swapped_better = 0
+    for sample in samples:
+        normal_overlap = _bbox_overlap_area(sample, request_bbox)
+        swapped_overlap = _bbox_overlap_area(_swap_bbox_axes(sample), request_bbox)
+        if swapped_overlap > normal_overlap:
+            swapped_better += 1
+
+    return swapped_better > (len(samples) // 2)
+
+
 def _can_reuse_index(manifest: IndexManifest, config: RunConfig) -> bool:
     return (
         manifest.passed
@@ -43,6 +106,8 @@ def _can_reuse_index(manifest: IndexManifest, config: RunConfig) -> bool:
         and manifest.srs == config.srs
         and manifest.strict_years == config.strict_years
         and manifest.min_years == config.min_years
+        and manifest.wfs_bbox_axes_swapped == config.experimental_wfs_swap_bbox_axes
+        and not _index_manifest_has_swapped_tile_bboxes(manifest)
     )
 
 
@@ -75,6 +140,8 @@ def _can_reuse_download(manifest: DatasetManifest, config: RunConfig, index_outp
         return False
     if manifest.profile != config.profile:
         return False
+    if sorted(set(manifest.forced_wms_years)) != sorted(set(config.force_wms_years)):
+        return False
     if config.profile == "reference":
         if manifest.target_bbox != config.bbox:
             return False
@@ -89,6 +156,7 @@ def _write_wms_only_index(config: RunConfig, index_output: Path, year_availabili
     from satmap_dataset.models import YearAvailabilityReport, YearStatus
 
     requested_years = config.requested_years
+    run_parameters = config.model_dump(mode="json")
     statuses = [
         YearStatus(
             year=year,
@@ -106,6 +174,7 @@ def _write_wms_only_index(config: RunConfig, index_output: Path, year_availabili
         srs=config.srs,
         strict_years=config.strict_years,
         min_years=config.min_years,
+        wfs_bbox_axes_swapped=False,
         years_requested=requested_years,
         year_statuses=statuses,
         years_available_wfs=[],
@@ -116,12 +185,14 @@ def _write_wms_only_index(config: RunConfig, index_output: Path, year_availabili
         passed=True,
         errors=[],
         warnings=["WFS index step skipped for mode=wms_tiled."],
+        run_parameters=run_parameters,
     )
     year_report = YearAvailabilityReport(
         year_start=config.year_start,
         year_end=config.year_end,
         bbox=config.bbox,
         srs=config.srs,
+        wfs_bbox_axes_swapped=False,
         years_requested=requested_years,
         year_statuses=statuses,
         years_available_wfs=[],
@@ -132,6 +203,7 @@ def _write_wms_only_index(config: RunConfig, index_output: Path, year_availabili
         passed=True,
         errors=[],
         warnings=["WFS year availability probe skipped for mode=wms_tiled."],
+        run_parameters=run_parameters,
     )
     index_output.parent.mkdir(parents=True, exist_ok=True)
     year_availability_output.parent.mkdir(parents=True, exist_ok=True)
@@ -189,6 +261,7 @@ def run(config: RunConfig) -> tuple[int, Path]:
             srs=config.srs,
             px_per_meter=config.px_per_meter,
             wms_fallback_missing_years=config.wms_fallback_missing_years,
+            force_wms_years=config.force_wms_years,
             concurrency=config.concurrency,
             retries=config.retries,
             retry_delay=config.retry_delay,
@@ -219,10 +292,6 @@ def run(config: RunConfig) -> tuple[int, Path]:
         compression=config.compression,
         overview_levels=config.overview_levels,
         wms_fallback_missing_years=config.wms_fallback_missing_years,
-        wfs_global_calibration=config.wfs_global_calibration,
-        calibration_reference_year=config.calibration_reference_year,
-        calibration_transform=config.calibration_transform,
-        calibration_max_error_px=config.calibration_max_error_px,
         disable_color_norm=config.disable_color_norm,
         experimental_force_srgb_from_ycbcr=config.experimental_force_srgb_from_ycbcr,
         experimental_per_year_color_norm=config.experimental_per_year_color_norm,

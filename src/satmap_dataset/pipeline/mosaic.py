@@ -17,6 +17,7 @@ def _write_json(path: Path, payload: DatasetManifest) -> None:
 
 def run(config: MosaicConfig) -> tuple[int, Path]:
     source_manifest = _read_dataset_manifest(config.dataset_manifest)
+    run_parameters = config.model_dump(mode="json")
     years = source_manifest.years_included
     assets = list(source_manifest.assets)
     passed = source_manifest.passed and bool(years) and bool(assets)
@@ -36,6 +37,7 @@ def run(config: MosaicConfig) -> tuple[int, Path]:
         pixel_profile="RGB_U8",
         passed=passed,
         notes="Mosaic stage currently passes through downloaded TIFF asset list.",
+        run_parameters=run_parameters,
     )
     _write_json(config.output_json, manifest)
 

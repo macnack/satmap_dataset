@@ -39,6 +39,14 @@ class WMSTileSpec:
     output_path: Path
 
 
+@dataclass(frozen=True)
+class WFSJob:
+    year: int
+    tile_id: str
+    url: str
+    expected_bbox: BBox | None
+
+
 def _read_index_manifest(path: Path) -> IndexManifest:
     return IndexManifest.model_validate_json(path.read_text(encoding="utf-8"))
 
@@ -60,6 +68,15 @@ def _parse_bbox(value: str) -> BBox:
 
 def _bbox_dimensions_meters(bbox: BBox) -> tuple[float, float]:
     return bbox.max_x - bbox.min_x, bbox.max_y - bbox.min_y
+
+
+def _bbox_almost_equal(a: BBox, b: BBox, *, tol: float = 1e-6) -> bool:
+    return (
+        abs(a.min_x - b.min_x) <= tol
+        and abs(a.min_y - b.min_y) <= tol
+        and abs(a.max_x - b.max_x) <= tol
+        and abs(a.max_y - b.max_y) <= tol
+    )
 
 
 def _wms_time_for_year(year: int) -> str:
@@ -121,15 +138,101 @@ def _is_valid_cached_asset(path: Path) -> bool:
     return False
 
 
-def _build_wfs_jobs(index_manifest: IndexManifest) -> list[tuple[int, str, str]]:
-    jobs: list[tuple[int, str, str]] = []
+def _bbox_intersection_area(a: BBox, b: BBox) -> float:
+    min_x = max(a.min_x, b.min_x)
+    min_y = max(a.min_y, b.min_y)
+    max_x = min(a.max_x, b.max_x)
+    max_y = min(a.max_y, b.max_y)
+    if min_x >= max_x or min_y >= max_y:
+        return 0.0
+    return (max_x - min_x) * (max_y - min_y)
+
+
+def _swap_bbox_axes(bbox: BBox) -> BBox:
+    return BBox(
+        min_x=bbox.min_y,
+        min_y=bbox.min_x,
+        max_x=bbox.max_y,
+        max_y=bbox.max_x,
+    )
+
+
+def _read_tiff_bbox(path: Path) -> BBox | None:
+    try:
+        with tifffile.TiffFile(path) as tif:
+            page = tif.pages[0]
+            scale_tag = page.tags.get("ModelPixelScaleTag")
+            tie_tag = page.tags.get("ModelTiepointTag")
+            if scale_tag is None or tie_tag is None:
+                return None
+            scale = scale_tag.value
+            tie = tie_tag.value
+            if len(scale) < 2 or len(tie) < 6:
+                return None
+            px_x = float(scale[0])
+            px_y = abs(float(scale[1]))
+            origin_x = float(tie[3])
+            origin_y = float(tie[4])
+            width = int(page.imagewidth)
+            height = int(page.imagelength)
+        return BBox(
+            min_x=origin_x,
+            min_y=origin_y - height * px_y,
+            max_x=origin_x + width * px_x,
+            max_y=origin_y,
+        )
+    except Exception:
+        return None
+
+
+def _wfs_tile_matches_expected_bbox(path: Path, expected_bbox: BBox, *, min_overlap_ratio: float = 0.05) -> bool:
+    observed = _read_tiff_bbox(path)
+    if observed is None:
+        return False
+    expected_area = max(
+        1e-9,
+        (expected_bbox.max_x - expected_bbox.min_x) * (expected_bbox.max_y - expected_bbox.min_y),
+    )
+    normal_ratio = _bbox_intersection_area(observed, expected_bbox) / expected_area
+    swapped_ratio = _bbox_intersection_area(_swap_bbox_axes(observed), expected_bbox) / expected_area
+    return max(normal_ratio, swapped_ratio) >= min_overlap_ratio
+
+
+def _parse_optional_bbox(value: list[float] | tuple[float, float, float, float] | None) -> BBox | None:
+    if value is None:
+        return None
+    if len(value) != 4:
+        return None
+    try:
+        return BBox(
+            min_x=float(value[0]),
+            min_y=float(value[1]),
+            max_x=float(value[2]),
+            max_y=float(value[3]),
+        )
+    except Exception:
+        return None
+
+
+def _build_wfs_jobs(index_manifest: IndexManifest, *, years: set[int] | None = None) -> list[WFSJob]:
+    jobs: list[WFSJob] = []
     for year in index_manifest.years_included:
+        if years is not None and year not in years:
+            continue
         year_sources = index_manifest.tile_sources_by_year.get(year, {})
+        year_bboxes = index_manifest.tile_bboxes_by_year.get(year, {})
         for tile_id in sorted(year_sources.keys()):
             url = year_sources.get(tile_id)
             if not url:
                 continue
-            jobs.append((year, tile_id, url))
+            jobs.append(
+                WFSJob(
+                    year=year,
+                    tile_id=tile_id,
+                    url=url,
+                    expected_bbox=_parse_optional_bbox(year_bboxes.get(tile_id)),
+                )
+            )
     return jobs
 
 
@@ -327,19 +430,21 @@ def _resolve_year_sets(
     mode: str,
     *,
     wms_fallback_missing_years: bool,
-) -> tuple[list[int], list[int], list[int]]:
+    force_wms_years: list[int],
+) -> tuple[list[int], list[int], list[int], list[int]]:
     requested = sorted(set(index_manifest.years_requested))
-    wfs_years = sorted(set(index_manifest.years_included))
+    forced_wms = sorted(set(force_wms_years).intersection(requested))
+    wfs_years = sorted(set(index_manifest.years_included) - set(forced_wms))
 
     if mode == "wfs_render":
-        return requested, wfs_years, []
+        return requested, wfs_years, [], forced_wms
     if mode == "wms_tiled":
-        return requested, [], requested
+        return requested, [], requested, forced_wms
 
     if not wms_fallback_missing_years:
-        return requested, wfs_years, []
+        return requested, wfs_years, forced_wms, forced_wms
     fallback_years = sorted(set(requested) - set(wfs_years))
-    return requested, wfs_years, fallback_years
+    return requested, wfs_years, fallback_years, forced_wms
 
 
 def run(config: DownloadConfig) -> tuple[int, Path]:
@@ -350,17 +455,27 @@ def run(config: DownloadConfig) -> tuple[int, Path]:
         config.download_root,
         config.concurrency,
     )
+    run_parameters = config.model_dump(mode="json")
     index_manifest = _read_index_manifest(config.index_manifest)
-    requested_years, wfs_years, wms_years = _resolve_year_sets(
+    requested_years, wfs_years, wms_years, forced_wms_years = _resolve_year_sets(
         index_manifest,
         config.mode,
         wms_fallback_missing_years=config.wms_fallback_missing_years,
+        force_wms_years=config.force_wms_years,
     )
 
     if config.mode in {"wms_tiled", "hybrid"} and config.bbox is None:
         raise ValueError("bbox is required when mode uses WMS")
+    if config.mode in {"wms_tiled", "hybrid"}:
+        requested_bbox = _parse_bbox(config.bbox or "")
+        index_bbox = _parse_bbox(index_manifest.bbox)
+        if not _bbox_almost_equal(requested_bbox, index_bbox):
+            raise ValueError(
+                "WMS bbox must match index bbox exactly to keep WFS and WMS spatially aligned. "
+                f"index_bbox={index_manifest.bbox} requested_bbox={config.bbox}"
+            )
 
-    wfs_jobs = _build_wfs_jobs(index_manifest) if wfs_years else []
+    wfs_jobs = _build_wfs_jobs(index_manifest, years=set(wfs_years)) if wfs_years else []
     wms_specs: list[WMSTileSpec] = []
     if wms_years:
         bbox_obj = _parse_bbox(config.bbox or "")
@@ -378,10 +493,11 @@ def run(config: DownloadConfig) -> tuple[int, Path]:
             )
 
     logger.info(
-        "Download: planned wfs_jobs=%s wms_tiles=%s years_requested=%s",
+        "Download: planned wfs_jobs=%s wms_tiles=%s years_requested=%s forced_wms_years=%s",
         len(wfs_jobs),
         len(wms_specs),
         len(requested_years),
+        forced_wms_years,
     )
 
     results: list[tuple[Path, bool]] = []
@@ -391,7 +507,7 @@ def run(config: DownloadConfig) -> tuple[int, Path]:
         if not wfs_jobs:
             return []
 
-        queue: asyncio.Queue[tuple[int, str, str] | None] = asyncio.Queue()
+        queue: asyncio.Queue[WFSJob | None] = asyncio.Queue()
         for job in wfs_jobs:
             queue.put_nowait(job)
 
@@ -414,13 +530,21 @@ def run(config: DownloadConfig) -> tuple[int, Path]:
                         queue.task_done()
                         return
 
-                    year, tile_id, url = item
-                    filename = Path(urlparse(url).path).name or f"{tile_id}.tif"
-                    output_path = config.download_root / str(year) / filename
+                    filename = Path(urlparse(item.url).path).name or f"{item.tile_id}.tif"
+                    output_path = config.download_root / str(item.year) / filename
 
                     ok = False
                     if output_path.exists() and not config.overwrite:
                         ok = _is_valid_cached_asset(output_path)
+                        if ok and item.expected_bbox is not None:
+                            ok = _wfs_tile_matches_expected_bbox(output_path, item.expected_bbox)
+                            if not ok:
+                                logger.warning(
+                                    "Download: cached WFS tile georef mismatch year=%s tile=%s file=%s",
+                                    item.year,
+                                    item.tile_id,
+                                    output_path.name,
+                                )
                         if not ok:
                             try:
                                 output_path.unlink()
@@ -430,7 +554,7 @@ def run(config: DownloadConfig) -> tuple[int, Path]:
                     if not ok:
                         ok = await _download_with_retry(
                             client,
-                            url,
+                            item.url,
                             output_path,
                             retries=config.retries,
                             retry_delay=config.retry_delay,
@@ -439,6 +563,19 @@ def run(config: DownloadConfig) -> tuple[int, Path]:
                         )
                         if ok:
                             ok = _is_valid_cached_asset(output_path)
+                        if ok and item.expected_bbox is not None:
+                            ok = _wfs_tile_matches_expected_bbox(output_path, item.expected_bbox)
+                            if not ok:
+                                logger.warning(
+                                    "Download: rejecting WFS tile outside expected footprint year=%s tile=%s file=%s",
+                                    item.year,
+                                    item.tile_id,
+                                    output_path.name,
+                                )
+                                try:
+                                    output_path.unlink()
+                                except OSError:
+                                    pass
 
                     async with lock:
                         output.append((output_path, ok))
@@ -575,6 +712,7 @@ def run(config: DownloadConfig) -> tuple[int, Path]:
         years_excluded_with_reason=index_manifest.years_excluded_with_reason,
         common_tile_ids=index_manifest.common_tile_ids,
         tile_sources_by_year=index_manifest.tile_sources_by_year,
+        tile_bboxes_by_year=index_manifest.tile_bboxes_by_year,
         assets=assets,
         source_manifest=str(config.index_manifest),
         mode=config.mode,
@@ -583,11 +721,13 @@ def run(config: DownloadConfig) -> tuple[int, Path]:
         profile=config.profile,
         px_per_meter=config.px_per_meter if config.mode in {"wms_tiled", "hybrid"} else None,
         years_source_map=years_source_map,
+        forced_wms_years=forced_wms_years,
         passed=passed,
         notes=(
             f"mode={config.mode} downloaded={len(assets)} failed={len(failed)} "
-            f"missing_year_outputs={missing_year_outputs}"
+            f"missing_year_outputs={missing_year_outputs} forced_wms_years={forced_wms_years}"
         ),
+        run_parameters=run_parameters,
     )
     _write_json(config.output_json, manifest)
 

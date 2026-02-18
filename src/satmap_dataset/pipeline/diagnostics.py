@@ -206,21 +206,6 @@ def build_mismatch_report(
             if _write_quicklook(output_asset, out_preview):
                 output_quicklook = str(out_preview)
 
-        source_quicklook = None
-        if source_assets:
-            source_preview = quicklook_dir / f"year_{year}_source.tiff"
-            if _write_quicklook(source_assets[0], source_preview):
-                source_quicklook = str(source_preview)
-
-        wfs_quicklook = source_quicklook if source_type == "wfs" else None
-        wms_quicklook = source_quicklook if source_type in {"wms", "wms_fallback"} else None
-
-        diff_quicklook = None
-        if output_quicklook and source_quicklook:
-            diff_path = quicklook_dir / f"year_{year}_overlay_diff.tiff"
-            if _quicklook_diff(Path(output_quicklook), Path(source_quicklook), diff_path):
-                diff_quicklook = str(diff_path)
-
         years_payload.append(
             {
                 "year": year,
@@ -233,9 +218,6 @@ def build_mismatch_report(
                 "pixel_shift_x": shift_x,
                 "pixel_shift_y": shift_y,
                 "quicklook_output": output_quicklook,
-                "quicklook_wfs": wfs_quicklook,
-                "quicklook_wms": wms_quicklook,
-                "quicklook_overlay_diff": diff_quicklook,
             }
         )
 

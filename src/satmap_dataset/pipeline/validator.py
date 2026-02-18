@@ -235,6 +235,7 @@ def run(config: ValidateConfig) -> tuple[int, Path]:
         strict_years=config.strict_years,
         min_years=config.min_years,
     )
+    report = report.model_copy(update={"run_parameters": config.model_dump(mode="json")})
 
     missing_assets = []
     for asset in dataset_manifest.assets:
@@ -307,84 +308,6 @@ def run(config: ValidateConfig) -> tuple[int, Path]:
         except Exception as exc:
             report.errors.append(f"Failed to inspect rendered asset {asset}: {exc}")
             report.passed = False
-
-    for year, source_type in dataset_manifest.years_source_map.items():
-        if source_type != "wfs":
-            continue
-        coverage = dataset_manifest.coverage_ratio_by_year.get(year)
-        if coverage is None or coverage <= 0.0:
-            report.errors.append(
-                f"WFS year {year} has zero coverage ratio ({coverage}); likely wrong source georef/axis mapping."
-            )
-            report.passed = False
-
-    if dataset_manifest.profile == "reference" and dataset_manifest.wfs_global_calibration:
-        if not dataset_manifest.calibration_matrix:
-            report.errors.append("Missing global calibration matrix for reference profile.")
-            report.passed = False
-        if dataset_manifest.calibration_fit_error_px is None:
-            report.errors.append("Missing global calibration fit error for reference profile.")
-            report.passed = False
-        elif (
-            dataset_manifest.calibration_max_error_px is not None
-            and dataset_manifest.calibration_fit_error_px > dataset_manifest.calibration_max_error_px
-        ):
-            matrix = dataset_manifest.calibration_matrix or []
-            if matrix == [1.0, 0.0, 0.0, 0.0, 1.0, 0.0]:
-                report.warnings.append(
-                    "Global calibration fit error exceeded threshold, "
-                    "identity transform fallback was used."
-                )
-            else:
-                report.errors.append(
-                    "Global calibration error exceeds threshold: "
-                    f"{dataset_manifest.calibration_fit_error_px:.3f}px > "
-                    f"{dataset_manifest.calibration_max_error_px:.3f}px"
-                )
-                report.passed = False
-
-        if dataset_manifest.calibration_report_path:
-            report_path = Path(dataset_manifest.calibration_report_path)
-            if not report_path.is_absolute():
-                report_path = (config.dataset_manifest.parent / report_path).resolve()
-            if not report_path.exists():
-                report.errors.append(
-                    f"Missing calibration report file: {dataset_manifest.calibration_report_path}"
-                )
-                report.passed = False
-
-        for year in dataset_manifest.years_included:
-            source_type = dataset_manifest.years_source_map.get(year)
-            status = dataset_manifest.calibration_status_by_year.get(year)
-            if source_type == "wfs":
-                if status != "applied":
-                    report.errors.append(
-                        f"Calibration status invalid for WFS year {year}: {status}"
-                    )
-                    report.passed = False
-                err = dataset_manifest.calibration_error_px_by_year.get(year)
-                if err is None:
-                    report.errors.append(f"Missing calibration error for WFS year {year}")
-                    report.passed = False
-                elif (
-                    dataset_manifest.calibration_max_error_px is not None
-                    and err > dataset_manifest.calibration_max_error_px
-                ):
-                    matrix = dataset_manifest.calibration_matrix or []
-                    if matrix == [1.0, 0.0, 0.0, 0.0, 1.0, 0.0]:
-                        report.warnings.append(
-                            f"Calibration fallback identity for year {year}; raw fit error {err:.3f}px"
-                        )
-                    else:
-                        report.errors.append(
-                            f"Calibration error too high for year {year}: {err:.3f}px"
-                        )
-                        report.passed = False
-            elif source_type in {"wms", "wms_fallback"} and status not in {"skipped_wms", "disabled"}:
-                report.errors.append(
-                    f"Calibration status invalid for WMS year {year}: {status}"
-                )
-                report.passed = False
 
     _write_json(config.output_json, report)
     logger.info(

@@ -91,8 +91,3 @@ def test_resolve_target_dimensions_override() -> None:
     )
     width, height = render._resolve_target_dimensions(config, bbox)
     assert (width, height) == (321, 654)
-
-
-def test_translation_matrix_structure() -> None:
-    matrix = render._translation_matrix(3.5, -2.0)
-    assert matrix == (1.0, 0.0, 3.5, 0.0, 1.0, -2.0)
