@@ -8,10 +8,11 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from satmap_dataset.config import IndexConfig
 from satmap_dataset.models import IndexManifest, YearAvailabilityReport, YearStatus
+from satmap_dataset.pipeline.aoi_preview import _parse_proj_angle
 from satmap_dataset.pipeline import index_builder
 
 
-def test_index_writes_aoi_preview_html(monkeypatch, tmp_path: Path) -> None:
+def test_index_writes_aoi_preview_html_and_png(monkeypatch, tmp_path: Path) -> None:
     def fake_probe(aoi: str, year_start: int, year_end: int, srs: str):
         statuses = [
             YearStatus(
@@ -46,11 +47,23 @@ def test_index_writes_aoi_preview_html(monkeypatch, tmp_path: Path) -> None:
     html = preview_path.read_text(encoding="utf-8")
     assert "OpenStreetMap contributors" in html
     assert "359700.0,504900.0,361700.0,506900.0" in html
+    png_preview_path = tmp_path / "aoi_preview.png"
+    assert png_preview_path.exists()
+    assert png_preview_path.stat().st_size > 0
 
     manifest = IndexManifest.model_validate_json(output_path.read_text(encoding="utf-8"))
     assert manifest.aoi_preview_html == str(preview_path)
+    assert manifest.aoi_preview_png == str(png_preview_path)
 
     year_report = YearAvailabilityReport.model_validate_json(
         (tmp_path / "year_availability_report.json").read_text(encoding="utf-8")
     )
     assert year_report.aoi_preview_html == str(preview_path)
+    assert year_report.aoi_preview_png == str(png_preview_path)
+
+
+def test_parse_proj_angle_accepts_dms_output() -> None:
+    lon = _parse_proj_angle("21d44'19.277\"E")
+    lat = _parse_proj_angle("52d13'49.194\"N")
+    assert abs(lon - 21.738688055555556) < 1e-9
+    assert abs(lat - 52.230331666666665) < 1e-6

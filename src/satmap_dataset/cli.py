@@ -377,6 +377,8 @@ def index_command(
             manifest = IndexManifest.model_validate_json(artifact_path.read_text(encoding="utf-8"))
             if manifest.aoi_preview_html:
                 console.print(f"[cyan]AOI preview HTML:[/cyan] {manifest.aoi_preview_html}")
+            if getattr(manifest, "aoi_preview_png", None):
+                console.print(f"[cyan]AOI preview PNG:[/cyan] {manifest.aoi_preview_png}")
         except Exception:
             pass
     _finish(exit_code, artifact_path)

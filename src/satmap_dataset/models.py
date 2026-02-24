@@ -40,6 +40,7 @@ class IndexManifest(BaseModel):
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     aoi_preview_html: str | None = None
+    aoi_preview_png: str | None = None
     run_parameters: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -112,4 +113,5 @@ class YearAvailabilityReport(BaseModel):
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     aoi_preview_html: str | None = None
+    aoi_preview_png: str | None = None
     run_parameters: dict[str, Any] = Field(default_factory=dict)

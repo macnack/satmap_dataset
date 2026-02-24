@@ -9,7 +9,7 @@ from satmap_dataset.config import IndexConfig
 from satmap_dataset.geoportal.http import RetryPolicy
 from satmap_dataset.geoportal.wfs_client import get_capabilities, get_year_tiles
 from satmap_dataset.models import IndexManifest, YearAvailabilityReport, YearStatus
-from satmap_dataset.pipeline.aoi_preview import write_osm_preview_html
+from satmap_dataset.pipeline.aoi_preview import write_aoi_preview_png, write_osm_preview_html
 from satmap_dataset.pipeline.validator import evaluate_year_policy
 
 logger = logging.getLogger("satmap_dataset.index")
@@ -157,20 +157,36 @@ def run(config: IndexConfig) -> tuple[int, Path]:
             "WFS returned zero features for the provided bbox and years. Verify bbox axis order (xmin,ymin,xmax,ymax) and SRS."
         )
     aoi_preview_html: str | None = None
-    preview_warning: str | None = None
-    preview_path = config.output_json.parent / "aoi_preview.html"
+    aoi_preview_png: str | None = None
+    preview_warnings: list[str] = []
+    preview_html_path = config.output_json.parent / "aoi_preview.html"
+    preview_png_path = config.output_json.parent / "aoi_preview.png"
     try:
         write_osm_preview_html(
             bbox=config.bbox,
             srs=config.srs,
-            output_path=preview_path,
+            output_path=preview_html_path,
         )
-        aoi_preview_html = str(preview_path)
-        logger.info("Index: wrote AOI preview=%s", preview_path)
+        aoi_preview_html = str(preview_html_path)
+        logger.info("Index: wrote AOI preview HTML=%s", preview_html_path)
     except Exception as exc:
-        preview_warning = f"AOI preview was not generated: {exc}"
+        preview_warning = f"AOI preview HTML was not generated: {exc}"
+        preview_warnings.append(preview_warning)
         warnings.append(preview_warning)
-        logger.warning("Index: AOI preview generation failed: %s", exc)
+        logger.warning("Index: AOI preview HTML generation failed: %s", exc)
+    try:
+        write_aoi_preview_png(
+            bbox=config.bbox,
+            srs=config.srs,
+            output_path=preview_png_path,
+        )
+        aoi_preview_png = str(preview_png_path)
+        logger.info("Index: wrote AOI preview PNG=%s", preview_png_path)
+    except Exception as exc:
+        preview_warning = f"AOI preview PNG was not generated: {exc}"
+        preview_warnings.append(preview_warning)
+        warnings.append(preview_warning)
+        logger.warning("Index: AOI preview PNG generation failed: %s", exc)
     logger.info(
         "Index: years_included=%s common_tile_ids=%s",
         len(policy.years_included),
@@ -197,6 +213,7 @@ def run(config: IndexConfig) -> tuple[int, Path]:
         errors=errors,
         warnings=warnings,
         aoi_preview_html=aoi_preview_html,
+        aoi_preview_png=aoi_preview_png,
         run_parameters=run_parameters,
     )
     year_report = YearAvailabilityReport(
@@ -214,8 +231,9 @@ def run(config: IndexConfig) -> tuple[int, Path]:
         min_years=config.min_years,
         passed=policy.passed,
         errors=policy.errors,
-        warnings=policy.warnings + ([preview_warning] if preview_warning else []),
+        warnings=policy.warnings + preview_warnings,
         aoi_preview_html=aoi_preview_html,
+        aoi_preview_png=aoi_preview_png,
         run_parameters=run_parameters,
     )
     _write_json(config.year_availability_output_json, year_report)

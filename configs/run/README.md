@@ -1,6 +1,7 @@
 # Run Configs (Base + Location Overrides)
 
 These files are prepared for `run-json` command.
+All examples below use relative paths from the repository root (no absolute user-home paths).
 
 ## Structure
 
@@ -16,17 +17,17 @@ These files are prepared for `run-json` command.
 ## Build Final Config
 
 ```bash
-python /Users/mackop/jan/satmap_dataset/scripts/merge_json_config.py \
-  --base /Users/mackop/jan/satmap_dataset/configs/run/base.json \
-  --override /Users/mackop/jan/satmap_dataset/configs/run/locations/poznan.json \
-  --out /Users/mackop/jan/satmap_dataset/configs/run/generated/poznan.run.json
+python scripts/merge_json_config.py \
+  --base configs/run/base.json \
+  --override configs/run/locations/poznan.json \
+  --out configs/run/generated/poznan.run.json
 ```
 
 ## Run Pipeline
 
 ```bash
 python -m satmap_dataset.cli run-json \
-  /Users/mackop/jan/satmap_dataset/configs/run/generated/poznan.run.json
+  configs/run/generated/poznan.run.json
 ```
 
 `run-json` supports center-based fields directly and auto-converts them to bbox (`EPSG:2180`).
@@ -45,7 +46,7 @@ python -m satmap_dataset.cli run-json \
 ## Index All Locations (Sequential)
 
 ```bash
-python /Users/mackop/jan/satmap_dataset/scripts/index_all_locations.py \
+python scripts/index_all_locations.py \
   --year-start 2015 \
   --year-end 2025
 ```
@@ -53,7 +54,7 @@ python /Users/mackop/jan/satmap_dataset/scripts/index_all_locations.py \
 Continue through all locations even when some have no WFS years:
 
 ```bash
-python /Users/mackop/jan/satmap_dataset/scripts/index_all_locations.py \
+python scripts/index_all_locations.py \
   --year-start 2015 \
   --year-end 2025 \
   --continue-on-error
@@ -63,8 +64,8 @@ python /Users/mackop/jan/satmap_dataset/scripts/index_all_locations.py \
 
 ```bash
 python -m satmap_dataset.cli run-all-location-json \
-  --locations-dir /Users/mackop/jan/satmap_dataset/configs/run/locations \
-  --base-json /Users/mackop/jan/satmap_dataset/configs/run/base.json \
+  --locations-dir configs/run/locations \
+  --base-json configs/run/base.json \
   --continue-on-error
 ```
 
@@ -72,17 +73,46 @@ python -m satmap_dataset.cli run-all-location-json \
 
 ```bash
 python -m satmap_dataset.cli index-all-location-json \
-  --locations-dir /Users/mackop/jan/satmap_dataset/configs/run/locations \
-  --base-json /Users/mackop/jan/satmap_dataset/configs/run/base.json \
+  --locations-dir configs/run/locations \
+  --base-json configs/run/base.json \
   --continue-on-error
 
 python -m satmap_dataset.cli download-all-location-json \
-  --locations-dir /Users/mackop/jan/satmap_dataset/configs/run/locations \
-  --base-json /Users/mackop/jan/satmap_dataset/configs/run/base.json \
+  --locations-dir configs/run/locations \
+  --base-json configs/run/base.json \
   --continue-on-error
 
 python -m satmap_dataset.cli validate-all-location-json \
-  --locations-dir /Users/mackop/jan/satmap_dataset/configs/run/locations \
-  --base-json /Users/mackop/jan/satmap_dataset/configs/run/base.json \
+  --locations-dir configs/run/locations \
+  --base-json configs/run/base.json \
   --continue-on-error
+```
+
+## One Location Example (`bagno_lawki_biebrzanski_park`)
+
+Index only:
+
+```bash
+python scripts/merge_json_config.py \
+  --base configs/run/base.json \
+  --override configs/run/locations/bagno_lawki_biebrzanski_park.json \
+  --out configs/run/generated/bagno_lawki_biebrzanski_park.run.json
+
+python -m satmap_dataset.cli index-json \
+  configs/run/generated/bagno_lawki_biebrzanski_park.run.json
+```
+
+Full pipeline:
+
+```bash
+python -m satmap_dataset.cli run-location-json \
+  configs/run/locations/bagno_lawki_biebrzanski_park.json \
+  --base-json configs/run/base.json
+```
+
+Using `just`:
+
+```bash
+just index-location-json location_json=configs/run/locations/bagno_lawki_biebrzanski_park.json
+just run-location-json location_json=configs/run/locations/bagno_lawki_biebrzanski_park.json
 ```

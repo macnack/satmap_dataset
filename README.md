@@ -33,6 +33,19 @@ python -m pip install -r requirements.txt
 python -m pip install -r requirements-dev.txt
 ```
 
+System dependency (Linux, required by `pyvips`):
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libvips42 libvips-tools
+```
+
+Quick check:
+
+```bash
+python -c "import pyvips; print(pyvips.version(0), pyvips.version(1), pyvips.version(2))"
+```
+
 ## CLI examples
 
 ```bash
@@ -42,6 +55,47 @@ python -m satmap_dataset.cli download --index-manifest artifacts/index_manifest.
 python -m satmap_dataset.cli render --dataset-manifest artifacts/dataset_manifest_download.json --render-root rendered --profile train --px-per-meter 15
 python -m satmap_dataset.cli validate --dataset-manifest artifacts/dataset_manifest_render.json --year 2015 --year 2026
 python -m satmap_dataset.cli run --year-start 2015 --year-end 2026 --bbox "210300,521900,210500,522100" --sleep-min 0.8 --sleep-max 2.5 --concurrency 4 --render-root rendered --profile train
+```
+
+All command examples in this README use relative paths from the repository root.
+
+## Base + Location JSON (Relative Path Examples)
+
+Index all locations:
+
+```bash
+python -m satmap_dataset.cli index-all-location-json \
+  --locations-dir configs/run/locations \
+  --base-json configs/run/base.json \
+  --continue-on-error
+```
+
+Index one location (`bagno_lawki_biebrzanski_park`):
+
+```bash
+python scripts/merge_json_config.py \
+  --base configs/run/base.json \
+  --override configs/run/locations/bagno_lawki_biebrzanski_park.json \
+  --out configs/run/generated/bagno_lawki_biebrzanski_park.run.json
+
+python -m satmap_dataset.cli index-json \
+  configs/run/generated/bagno_lawki_biebrzanski_park.run.json
+```
+
+Run one location (full pipeline):
+
+```bash
+python -m satmap_dataset.cli run-location-json \
+  configs/run/locations/bagno_lawki_biebrzanski_park.json \
+  --base-json configs/run/base.json
+```
+
+Same operations with `just`:
+
+```bash
+just index-all-json
+just index-location-json location_json=configs/run/locations/bagno_lawki_biebrzanski_park.json
+just run-location-json location_json=configs/run/locations/bagno_lawki_biebrzanski_park.json
 ```
 
 Each command prints the generated JSON artifact path and exits with code:
@@ -106,4 +160,3 @@ The folder contains `year_YYYY.tif` with consistent width/height and `RGB_U8` pr
 ```bash
 pytest
 ```
-# satmap_dataset
