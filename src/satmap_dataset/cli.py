@@ -388,6 +388,10 @@ def _manifest_checkpoint(artifacts_dir: Path, filename: str) -> str:
     return "file"
 
 
+def _has_successful_validation_artifact(artifacts_dir: Path) -> bool:
+    return _manifest_checkpoint(artifacts_dir, "validation_report.json") == "yes"
+
+
 @app.command("summary-locations")
 def summary_locations_command(
     locations_dir: Path = typer.Argument(..., help="Directory with location JSON files."),
@@ -1085,6 +1089,10 @@ def run_all_location_json_command(
             failures.append(f"{location_json}: validation_error")
             if not continue_on_error:
                 raise typer.Exit(code=2) from error
+            continue
+
+        if _has_successful_validation_artifact(config.artifacts_dir):
+            console.print(f"[green]skip existing artifact:[/green] {config.artifacts_dir / 'validation_report.json'}")
             continue
 
         exit_code, artifact_path = run_all.run(config)

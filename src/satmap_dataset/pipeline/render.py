@@ -11,6 +11,7 @@ import subprocess
 
 import tifffile
 import numpy as np
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 
 from satmap_dataset.config import RenderConfig
 from satmap_dataset.models import DatasetManifest, IndexManifest
@@ -885,66 +886,75 @@ def run(config: RenderConfig) -> tuple[int, Path]:
     color_qc_by_year: dict[int, dict[str, float | list[float] | None]] = {}
     errors: list[str] = []
 
-    for year in source_manifest.years_included:
-        year_assets = grouped_assets.get(year, [])
-        logger.info("Render: year=%s input_tiles=%s", year, len(year_assets))
-        if not year_assets:
-            errors.append(f"No assets for year {year} in download manifest.")
-            continue
+    with Progress(
+        TextColumn("[magenta]Render years"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+    ) as progress:
+        task_id = progress.add_task("render_years", total=len(source_manifest.years_included))
+        for year in source_manifest.years_included:
+            try:
+                year_assets = grouped_assets.get(year, [])
+                logger.info("Render: year=%s input_tiles=%s", year, len(year_assets))
+                if not year_assets:
+                    errors.append(f"No assets for year {year} in download manifest.")
+                    continue
 
-        out_path = config.render_root / f"year_{year}.tiff"
-        source_type = years_source_map.get(year, "wfs")
-        has_reuse_entry = year in reusable_assets and Path(reusable_assets[year]).name == out_path.name
-        if has_reuse_entry and _can_reuse_render_output(
-            out_path=out_path,
-            target_bbox=target_bbox,
-            target_width=target_width,
-            target_height=target_height,
-            target_srs=config.target_srs,
-        ):
-            rendered_assets.append(str(out_path))
-            asset_stats[str(out_path)] = _collect_stats(out_path)
-            color_qc_by_year[year] = {
-                "mean_rgb": _mean_rgb_from_file(out_path),
-                "delta_to_wms_reference": None,
-            }
-            logger.info("Render: year=%s reusing existing output=%s", year, out_path)
-            continue
+                out_path = config.render_root / f"year_{year}.tiff"
+                source_type = years_source_map.get(year, "wfs")
+                has_reuse_entry = year in reusable_assets and Path(reusable_assets[year]).name == out_path.name
+                if has_reuse_entry and _can_reuse_render_output(
+                    out_path=out_path,
+                    target_bbox=target_bbox,
+                    target_width=target_width,
+                    target_height=target_height,
+                    target_srs=config.target_srs,
+                ):
+                    rendered_assets.append(str(out_path))
+                    asset_stats[str(out_path)] = _collect_stats(out_path)
+                    color_qc_by_year[year] = {
+                        "mean_rgb": _mean_rgb_from_file(out_path),
+                        "delta_to_wms_reference": None,
+                    }
+                    logger.info("Render: year=%s reusing existing output=%s", year, out_path)
+                    continue
 
-        try:
-            mean_rgb = _render_year(
-                year=year,
-                assets=year_assets,
-                out_path=out_path,
-                target_bbox=target_bbox,
-                target_width=target_width,
-                target_height=target_height,
-                target_srs=config.target_srs,
-                resample_method=config.resample_method,
-                tile_size=config.tile_size,
-                compression=config.compression,
-                force_srgb_from_ycbcr=(
-                    config.experimental_force_srgb_from_ycbcr
-                    or source_type in {"wms", "wms_fallback"}
-                ),
-                per_year_color_norm=(
-                    config.experimental_per_year_color_norm
-                    and not config.disable_color_norm
-                    and source_type == "wfs"
-                    and config.profile == "train"
-                ),
-                source_axis_mode=(inferred_source_axis_mode if source_type == "wfs" else "normal"),
-            )
-            rendered_assets.append(str(out_path))
-            asset_stats[str(out_path)] = _collect_stats(out_path)
-            color_qc_by_year[year] = {
-                "mean_rgb": mean_rgb,
-                "delta_to_wms_reference": None,
-            }
-            logger.info("Render: year=%s done output=%s", year, out_path)
-        except Exception as exc:
-            errors.append(f"Render failed for year {year}: {exc}")
-            logger.exception("Render: year=%s failed: %r", year, exc)
+                mean_rgb = _render_year(
+                    year=year,
+                    assets=year_assets,
+                    out_path=out_path,
+                    target_bbox=target_bbox,
+                    target_width=target_width,
+                    target_height=target_height,
+                    target_srs=config.target_srs,
+                    resample_method=config.resample_method,
+                    tile_size=config.tile_size,
+                    compression=config.compression,
+                    force_srgb_from_ycbcr=(
+                        config.experimental_force_srgb_from_ycbcr
+                        or source_type in {"wms", "wms_fallback"}
+                    ),
+                    per_year_color_norm=(
+                        config.experimental_per_year_color_norm
+                        and not config.disable_color_norm
+                        and source_type == "wfs"
+                        and config.profile == "train"
+                    ),
+                    source_axis_mode=(inferred_source_axis_mode if source_type == "wfs" else "normal"),
+                )
+                rendered_assets.append(str(out_path))
+                asset_stats[str(out_path)] = _collect_stats(out_path)
+                color_qc_by_year[year] = {
+                    "mean_rgb": mean_rgb,
+                    "delta_to_wms_reference": None,
+                }
+                logger.info("Render: year=%s done output=%s", year, out_path)
+            except Exception as exc:
+                errors.append(f"Render failed for year {year}: {exc}")
+                logger.exception("Render: year=%s failed: %r", year, exc)
+            finally:
+                progress.advance(task_id)
 
     passed = source_manifest.passed and not errors and len(rendered_assets) == len(source_manifest.years_included)
     notes = f"Rendered years={len(rendered_assets)} errors={len(errors)} overviews={config.overview_levels}"

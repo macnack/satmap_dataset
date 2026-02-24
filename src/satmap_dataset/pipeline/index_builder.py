@@ -5,6 +5,8 @@ from pathlib import Path
 import random
 import logging
 
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
+
 from satmap_dataset.config import IndexConfig
 from satmap_dataset.geoportal.http import RetryPolicy
 from satmap_dataset.geoportal.wfs_client import get_capabilities, get_year_tiles
@@ -39,27 +41,36 @@ async def _probe_years_wfs_async(
     results: list[YearStatus] = []
     tile_sources_by_year: dict[int, dict[str, str]] = {}
     tile_bboxes_by_year: dict[int, dict[str, list[float]]] = {}
-    for year in requested_years:
-        # Geoportal WFS is sensitive to bursts even for sequential calls.
-        await asyncio.sleep(random.uniform(0.6, 1.8))
-        status, year_tiles, year_tile_bboxes = await get_year_tiles(
-                year=year,
-                bbox=bbox,
-                srs=srs,
-                year_to_typename=year_to_typename,
-                timeout=45.0,
-                retry_policy=retry_policy,
+    with Progress(
+        TextColumn("[cyan]Index years"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        transient=True,
+    ) as progress:
+        task_id = progress.add_task("index_years", total=len(requested_years))
+        for year in requested_years:
+            # Geoportal WFS is sensitive to bursts even for sequential calls.
+            await asyncio.sleep(random.uniform(0.6, 1.8))
+            status, year_tiles, year_tile_bboxes = await get_year_tiles(
+                    year=year,
+                    bbox=bbox,
+                    srs=srs,
+                    year_to_typename=year_to_typename,
+                    timeout=45.0,
+                    retry_policy=retry_policy,
+                )
+            results.append(status)
+            tile_sources_by_year[year] = year_tiles
+            tile_bboxes_by_year[year] = year_tile_bboxes
+            logger.info(
+                "Index: year=%s status=%s features=%s tiles=%s",
+                year,
+                status.status,
+                status.feature_count,
+                len(year_tiles),
             )
-        results.append(status)
-        tile_sources_by_year[year] = year_tiles
-        tile_bboxes_by_year[year] = year_tile_bboxes
-        logger.info(
-            "Index: year=%s status=%s features=%s tiles=%s",
-            year,
-            status.status,
-            status.feature_count,
-            len(year_tiles),
-        )
+            progress.advance(task_id)
     return results, tile_sources_by_year, tile_bboxes_by_year
 
 

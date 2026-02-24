@@ -251,6 +251,63 @@ def test_run_all_location_json_runs_each_file(monkeypatch, tmp_path: Path) -> No
     assert len(captured) == 2
 
 
+def test_run_all_location_json_skips_when_validation_artifact_exists(monkeypatch, tmp_path: Path) -> None:
+    captured: list[RunConfig] = []
+
+    def fake_run(config: RunConfig):
+        captured.append(config)
+        return 0, config.artifacts_dir / "validation_report.json"
+
+    monkeypatch.setattr(cli.run_all, "run", fake_run)
+    monkeypatch.setattr(cli, "_bbox_from_center_latlon", lambda lat, lon, square_km: "100,200,300,400")
+
+    base = {
+        "year_start": 2015,
+        "year_end": 2016,
+        "mode": "hybrid",
+        "profile": "reference",
+        "srs": "EPSG:2180",
+        "area_km2": 4.0,
+    }
+    locations_dir = tmp_path / "configs" / "run" / "locations"
+    base_path = tmp_path / "configs" / "run" / "base.json"
+    base_path.parent.mkdir(parents=True, exist_ok=True)
+    locations_dir.mkdir(parents=True, exist_ok=True)
+    base_path.write_text(json.dumps(base), encoding="utf-8")
+    (locations_dir / "poznan.json").write_text(
+        json.dumps(
+            {
+                "location_name": "Poznan",
+                "center_lat": 52.4012627,
+                "center_lon": 16.9517999,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    artifacts_dir = tmp_path / "artifacts_poznan"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    (artifacts_dir / "validation_report.json").write_text(
+        json.dumps({"passed": True}),
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli.app,
+        [
+            "run-all-location-json",
+            "--locations-dir",
+            str(locations_dir),
+            "--base-json",
+            str(base_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert len(captured) == 0
+
+
 def test_index_all_location_json_runs_each_file(monkeypatch, tmp_path: Path) -> None:
     captured: list[object] = []
 

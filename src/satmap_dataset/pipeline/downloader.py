@@ -10,6 +10,7 @@ import logging
 
 import aiofiles
 import httpx
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 import tifffile
 
 from satmap_dataset.config import DownloadConfig
@@ -508,6 +509,12 @@ def run(config: DownloadConfig) -> tuple[int, Path]:
 
     results: list[tuple[Path, bool]] = []
     years_source_map: dict[int, str] = {}
+    wfs_jobs_by_year: dict[int, int] = {}
+    for job in wfs_jobs:
+        wfs_jobs_by_year[job.year] = wfs_jobs_by_year.get(job.year, 0) + 1
+    wms_specs_by_year: dict[int, int] = {}
+    for spec in wms_specs:
+        wms_specs_by_year[spec.year] = wms_specs_by_year.get(spec.year, 0) + 1
 
     async def _run_wfs_jobs() -> list[tuple[Path, bool]]:
         if not wfs_jobs:
@@ -522,6 +529,9 @@ def run(config: DownloadConfig) -> tuple[int, Path]:
 
         output: list[tuple[Path, bool]] = []
         lock = asyncio.Lock()
+        remaining_by_year = dict(wfs_jobs_by_year)
+        completed_years: set[int] = set()
+        progress = {"ui": None, "task_id": None}
 
         async def worker() -> None:
             async with httpx.AsyncClient(
@@ -585,13 +595,28 @@ def run(config: DownloadConfig) -> tuple[int, Path]:
 
                     async with lock:
                         output.append((output_path, ok))
+                        remaining = remaining_by_year.get(item.year, 0)
+                        if remaining > 0:
+                            remaining_by_year[item.year] = remaining - 1
+                            if remaining_by_year[item.year] == 0 and item.year not in completed_years:
+                                completed_years.add(item.year)
+                                if progress["ui"] is not None and progress["task_id"] is not None:
+                                    progress["ui"].advance(progress["task_id"])
                     queue.task_done()
 
-        workers = [asyncio.create_task(worker()) for _ in range(config.concurrency)]
-        await queue.join()
-        for _ in workers:
-            queue.put_nowait(None)
-        await asyncio.gather(*workers)
+        with Progress(
+            TextColumn("[green]Download WFS years"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+        ) as ui:
+            progress["ui"] = ui
+            progress["task_id"] = ui.add_task("download_wfs_years", total=len(remaining_by_year))
+            workers = [asyncio.create_task(worker()) for _ in range(config.concurrency)]
+            await queue.join()
+            for _ in workers:
+                queue.put_nowait(None)
+            await asyncio.gather(*workers)
         return output
 
     async def _run_wms_jobs() -> list[tuple[Path, bool]]:
@@ -606,6 +631,9 @@ def run(config: DownloadConfig) -> tuple[int, Path]:
         output: list[tuple[Path, bool]] = []
         lock = asyncio.Lock()
         progress = {"done": 0}
+        remaining_by_year = dict(wms_specs_by_year)
+        completed_years: set[int] = set()
+        ui_progress = {"ui": None, "task_id": None}
 
         async def worker() -> None:
             async with httpx.AsyncClient(
@@ -659,6 +687,13 @@ def run(config: DownloadConfig) -> tuple[int, Path]:
                     async with lock:
                         output.append((spec.output_path, ok))
                         progress["done"] += 1
+                        remaining = remaining_by_year.get(spec.year, 0)
+                        if remaining > 0:
+                            remaining_by_year[spec.year] = remaining - 1
+                            if remaining_by_year[spec.year] == 0 and spec.year not in completed_years:
+                                completed_years.add(spec.year)
+                                if ui_progress["ui"] is not None and ui_progress["task_id"] is not None:
+                                    ui_progress["ui"].advance(ui_progress["task_id"])
                         if progress["done"] % 25 == 0 or not ok:
                             logger.info(
                                 "Download: WMS progress %s/%s (latest ok=%s file=%s)",
@@ -670,11 +705,19 @@ def run(config: DownloadConfig) -> tuple[int, Path]:
                     queue.task_done()
 
         worker_count = max(1, min(config.concurrency, 16))
-        workers = [asyncio.create_task(worker()) for _ in range(worker_count)]
-        await queue.join()
-        for _ in workers:
-            queue.put_nowait(None)
-        await asyncio.gather(*workers)
+        with Progress(
+            TextColumn("[blue]Download WMS years"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+        ) as ui:
+            ui_progress["ui"] = ui
+            ui_progress["task_id"] = ui.add_task("download_wms_years", total=len(remaining_by_year))
+            workers = [asyncio.create_task(worker()) for _ in range(worker_count)]
+            await queue.join()
+            for _ in workers:
+                queue.put_nowait(None)
+            await asyncio.gather(*workers)
         return output
 
     results.extend(asyncio.run(_run_wfs_jobs()))
