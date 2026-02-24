@@ -113,6 +113,16 @@ python -m satmap_dataset.cli run-location-json \
 Using `just`:
 
 ```bash
+just index-all-json locations_4
+just run-all locations_4
+just run-all locations_dir=locations_4
+just summary-locations locations_4
+just summary-locations
 just index-location-json location_json=configs/run/locations/bagno_lawki_biebrzanski_park.json
 just run-location-json location_json=configs/run/locations/bagno_lawki_biebrzanski_park.json
 ```
+
+Alias behavior for `locations_4`/`locations_2`:
+- If value has no slash, it is resolved as `${SATMAP_LOCATIONS_ROOT:-./configs/run}/<alias>`.
+- If value is a path (contains `/` or starts with `/`), it is used as-is.
+- No manifest/registration file is required; folder name is enough.

@@ -94,9 +94,29 @@ Same operations with `just`:
 
 ```bash
 just index-all-json
+just index-all-json locations_4
+just run-all locations_4
+just run-all locations_dir=locations_4
+just summary-locations locations_4
+just summary-locations
 just index-location-json location_json=configs/run/locations/bagno_lawki_biebrzanski_park.json
 just run-location-json location_json=configs/run/locations/bagno_lawki_biebrzanski_park.json
 ```
+
+`just summary-locations` without arguments auto-selects:
+- one `locations*` directory if exactly one exists under `SATMAP_LOCATIONS_ROOT`,
+- interactive picker when multiple are found in a TTY,
+- fallback to `SATMAP_LOCATIONS_DIR` (or `SATMAP_LOCATIONS_ROOT/locations`) in non-interactive mode.
+
+Useful env variables (`.envrc`):
+
+```bash
+SATMAP_LOCATIONS_ROOT   # default: $PWD/configs/run
+SATMAP_LOCATIONS_DIR    # default: $SATMAP_LOCATIONS_ROOT/locations
+SATMAP_BASE_JSON        # default: $SATMAP_LOCATIONS_ROOT/base.json
+```
+
+No manifest/registration is needed for `locations_2`, `locations_4`, etc.; directory name is enough.
 
 Each command prints the generated JSON artifact path and exits with code:
 - `0` for success,
