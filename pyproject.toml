@@ -29,6 +29,7 @@ dev = [
 
 [project.scripts]
 satmap-dataset = "satmap_dataset.cli:main"
+summary-locations = "satmap_dataset.cli:summary_locations_main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

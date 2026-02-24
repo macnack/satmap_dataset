@@ -5,11 +5,14 @@ from pathlib import Path
 import subprocess
 import math
 import re
+import sys
 import unicodedata
+from typing import Any
 
 import typer
 from pydantic import ValidationError
 from rich.console import Console
+from rich.table import Table
 import httpx
 
 from satmap_dataset.models import IndexManifest
@@ -300,6 +303,154 @@ def _location_files_or_exit(locations_dir: Path) -> list[Path]:
         console.print(f"[red]No location JSON files found in:[/red] {locations_dir}")
         raise typer.Exit(code=2)
     return files
+
+
+def _format_compact_float(value: Any) -> str:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return "-"
+    return f"{numeric:.6f}".rstrip("0").rstrip(".")
+
+
+def _years_label(payload: dict[str, object]) -> str:
+    years = _requested_years_from_payload(payload)
+    if years:
+        return _format_years_list(years)
+    return "-"
+
+
+def _requested_years_from_payload(payload: dict[str, object]) -> list[int]:
+    if isinstance(payload.get("requested_years"), list):
+        return sorted({int(year) for year in payload["requested_years"]})
+    year_start = payload.get("year_start")
+    year_end = payload.get("year_end")
+    if year_start is not None and year_end is not None:
+        try:
+            start = int(year_start)
+            end = int(year_end)
+        except (TypeError, ValueError):
+            return []
+        if end >= start:
+            return list(range(start, end + 1))
+    return []
+
+
+def _format_years_list(years: list[int]) -> str:
+    if not years:
+        return "-"
+    ordered = sorted({int(year) for year in years})
+    count = len(ordered)
+    if count == 1:
+        return f"{ordered[0]} (1)"
+    contiguous = all((ordered[idx + 1] - ordered[idx]) == 1 for idx in range(count - 1))
+    if contiguous:
+        return f"{ordered[0]}-{ordered[-1]} ({count})"
+    if count <= 6:
+        return f"{','.join(str(year) for year in ordered)} ({count})"
+    return f"{ordered[0]}..{ordered[-1]} ({count})"
+
+
+def _load_available_years_from_artifacts(artifacts_dir: Path) -> list[int]:
+    candidates = [
+        artifacts_dir / "year_availability_report.json",
+        artifacts_dir / "index_manifest.json",
+    ]
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        values = payload.get("years_available_wfs")
+        if isinstance(values, list):
+            try:
+                return sorted({int(year) for year in values})
+            except (TypeError, ValueError):
+                continue
+    return []
+
+
+def _manifest_checkpoint(artifacts_dir: Path, filename: str) -> str:
+    manifest_path = artifacts_dir / filename
+    if not manifest_path.exists():
+        return "-"
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "file"
+    passed = payload.get("passed")
+    if passed is True:
+        return "yes"
+    if passed is False:
+        return "fail"
+    return "file"
+
+
+@app.command("summary-locations")
+def summary_locations_command(
+    locations_dir: Path = typer.Argument(..., help="Directory with location JSON files."),
+    base_json: Path = typer.Option(
+        Path("configs/run/base.json"),
+        "--base-json",
+        help="Optional base JSON merged with every location for shared defaults.",
+    ),
+) -> None:
+    base_payload: dict[str, object] = {}
+    if base_json.exists():
+        base_payload = _load_params_json_dict(base_json)
+    location_files = _location_files_or_exit(locations_dir)
+    repo_root = base_json.resolve().parents[2] if len(base_json.resolve().parents) >= 3 else Path.cwd().resolve()
+
+    output_console = Console()
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("File")
+    table.add_column("Location")
+    table.add_column("Requested")
+    table.add_column("Available")
+    table.add_column("Area km2")
+    table.add_column("Px/m")
+    table.add_column("Downloaded")
+    table.add_column("Rendered")
+
+    for location_json in location_files:
+        location_payload = _load_params_json_dict(location_json)
+        merged: dict[str, object] = dict(base_payload)
+        merged.update(location_payload)
+
+        location_name = str(merged.get("location_name") or location_json.stem)
+        requested_years = _years_label(merged)
+        area = _format_compact_float(merged.get("area_km2") or merged.get("square_km"))
+
+        artifacts_value = merged.get("artifacts_dir")
+        if artifacts_value is None:
+            try:
+                slug = _slugify_location_name(location_name)
+                artifacts = str(repo_root / f"artifacts_{slug}")
+            except typer.BadParameter:
+                artifacts = "-"
+        else:
+            artifacts = str(artifacts_value)
+
+        available_years = _format_years_list(_load_available_years_from_artifacts(Path(artifacts)))
+        px_per_meter = _format_compact_float(merged.get("px_per_meter"))
+        downloaded = _manifest_checkpoint(Path(artifacts), "dataset_manifest_download.json")
+        rendered = _manifest_checkpoint(Path(artifacts), "dataset_manifest_render.json")
+        table.add_row(
+            location_json.name,
+            location_name,
+            requested_years,
+            available_years,
+            area,
+            px_per_meter,
+            downloaded,
+            rendered,
+        )
+
+    output_console.print(f"[cyan]Locations summary:[/cyan] {len(location_files)} files")
+    output_console.print(table)
+    raise typer.Exit(code=0)
 
 
 @app.command("index")
@@ -1120,6 +1271,11 @@ def validate_all_location_json_command(
 def main() -> None:
     configure_logging("INFO")
     app()
+
+
+def summary_locations_main() -> None:
+    configure_logging("INFO")
+    app(args=["summary-locations", *sys.argv[1:]], prog_name="summary-locations")
 
 
 if __name__ == "__main__":

@@ -28,6 +28,7 @@ def _cli_env() -> dict[str, str]:
         ["mosaic", "--help"],
         ["validate", "--help"],
         ["run", "--help"],
+        ["summary-locations", "--help"],
     ],
 )
 def test_cli_help_smoke(args: list[str]) -> None:

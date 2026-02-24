@@ -13,11 +13,7 @@ test:
 
 # Merge base + location config into generated run-json.
 merge location="poznan":
-  mkdir -p configs/run/generated
-  python scripts/merge_json_config.py \
-    --base configs/run/base.json \
-    --override configs/run/locations/{{location}}.json \
-    --out configs/run/generated/{{location}}.run.json
+  loc="{{location}}"; loc="${loc#location=}"; mkdir -p configs/run/generated; python scripts/merge_json_config.py --base configs/run/base.json --override "configs/run/locations/${loc}.json" --out "configs/run/generated/${loc}.run.json"
 
 # Run pipeline from a generated run-json.
 run-json location="poznan":

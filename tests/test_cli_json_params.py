@@ -362,3 +362,62 @@ def test_validate_all_location_json_runs_each_file(monkeypatch, tmp_path: Path) 
 
     assert result.exit_code == 0
     assert len(captured) == 2
+
+
+def test_summary_locations_shows_key_fields(tmp_path: Path) -> None:
+    base = {
+        "year_start": 2014,
+        "year_end": 2016,
+        "area_km2": 4.0,
+        "px_per_meter": 15.0,
+    }
+    locations_dir = tmp_path / "configs" / "run" / "locations"
+    base_path = tmp_path / "configs" / "run" / "base.json"
+    base_path.parent.mkdir(parents=True, exist_ok=True)
+    locations_dir.mkdir(parents=True, exist_ok=True)
+    base_path.write_text(json.dumps(base), encoding="utf-8")
+    (locations_dir / "a.json").write_text(
+        json.dumps({"location_name": "Alpha", "center_lat": 52.4, "center_lon": 16.9}),
+        encoding="utf-8",
+    )
+    (locations_dir / "b.json").write_text(
+        json.dumps({"location_name": "Beta", "center_lat": 51.5, "center_lon": 16.1}),
+        encoding="utf-8",
+    )
+    artifacts_alpha = tmp_path / "artifacts_alpha"
+    artifacts_alpha.mkdir(parents=True, exist_ok=True)
+    (artifacts_alpha / "year_availability_report.json").write_text(
+        json.dumps(
+            {
+                "years_available_wfs": [2014, 2016],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (artifacts_alpha / "dataset_manifest_download.json").write_text(
+        json.dumps({"passed": True}),
+        encoding="utf-8",
+    )
+    (artifacts_alpha / "dataset_manifest_render.json").write_text(
+        json.dumps({"passed": False}),
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli.app,
+        ["summary-locations", str(locations_dir), "--base-json", str(base_path)],
+        env={"COLUMNS": "220"},
+    )
+
+    assert result.exit_code == 0
+    normalized = " ".join(result.stdout.split())
+    assert "Locations summary: 2 files" in normalized
+    assert "Alpha" in normalized
+    assert "Beta" in normalized
+    assert "2014-2016" in normalized
+    assert "(3)" in normalized
+    assert "2014,2016 (2)" in normalized
+    assert "15" in normalized
+    assert "yes" in normalized
+    assert "fail" in normalized
