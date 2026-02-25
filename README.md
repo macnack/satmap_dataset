@@ -98,6 +98,7 @@ just index-all-json locations_4
 just run-all locations_4
 just run-all locations_dir=locations_4
 just summary-locations locations_4
+just summary-locations location_9
 just summary-locations
 just index-location-json location_json=configs/run/locations/bagno_lawki_biebrzanski_park.json
 just run-location-json location_json=configs/run/locations/bagno_lawki_biebrzanski_park.json
@@ -117,6 +118,7 @@ SATMAP_BASE_JSON        # default: $SATMAP_LOCATIONS_ROOT/base.json
 ```
 
 No manifest/registration is needed for `locations_2`, `locations_4`, etc.; directory name is enough.
+Short singular aliases like `location_9` are also accepted and mapped to `locations_9` when that directory exists.
 
 Each command prints the generated JSON artifact path and exits with code:
 - `0` for success,

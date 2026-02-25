@@ -117,6 +117,7 @@ just index-all-json locations_4
 just run-all locations_4
 just run-all locations_dir=locations_4
 just summary-locations locations_4
+just summary-locations location_9
 just summary-locations
 just index-location-json location_json=configs/run/locations/bagno_lawki_biebrzanski_park.json
 just run-location-json location_json=configs/run/locations/bagno_lawki_biebrzanski_park.json
@@ -124,5 +125,6 @@ just run-location-json location_json=configs/run/locations/bagno_lawki_biebrzans
 
 Alias behavior for `locations_4`/`locations_2`:
 - If value has no slash, it is resolved as `${SATMAP_LOCATIONS_ROOT:-./configs/run}/<alias>`.
+- Singular aliases like `location_9` also work and are mapped to `locations_9` when present.
 - If value is a path (contains `/` or starts with `/`), it is used as-is.
 - No manifest/registration file is required; folder name is enough.
