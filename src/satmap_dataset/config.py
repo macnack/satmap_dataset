@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -32,6 +33,8 @@ class IndexConfig(BaseModel):
     min_years: int = Field(default=1, ge=1)
     output_json: Path = Path("artifacts/index_manifest.json")
     year_availability_output_json: Path = Path("artifacts/year_availability_report.json")
+    provider: Literal["geoportal", "nls"] = "geoportal"
+    provider_options: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("bbox")
     @classmethod
@@ -67,6 +70,8 @@ class DownloadConfig(BaseModel):
     sleep_max: float = Field(default=2.2, ge=0.0)
     overwrite: bool = False
     output_json: Path = Path("artifacts/dataset_manifest_download.json")
+    provider: Literal["geoportal", "nls"] = "geoportal"
+    provider_options: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_sleep_range(self) -> "DownloadConfig":
