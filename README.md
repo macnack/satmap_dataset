@@ -177,6 +177,28 @@ dataset = SatelliteSeasonalHomographyDataset(
 
 The folder contains `year_YYYY.tif` with consistent width/height and `RGB_U8` profile.
 
+## Finland (Maanmittauslaitos / NLS) provider
+
+The `nls` provider downloads year-aware orthophotos via Maanmittauslaitos's open
+WCS endpoint. License: CC BY 4.0. Requires a free API key from
+https://omatili.maanmittauslaitos.fi/ — paste it into a `.secret` file at the
+repo root, set `SATMAP_NLS_API_KEY`, or pass it via `provider_options.api_key`.
+
+Hard limit: AOIs must be ≤ 2000 m × 2000 m in EPSG:3067 (matches the project's
+default `square_km=4.0`). Larger AOIs are rejected at config time.
+
+```bash
+# Index + download in one shot
+python -m satmap_dataset.cli nls-run-json configs/run/base_nls.json
+
+# Or run stages separately
+python -m satmap_dataset.cli nls-index-json configs/run/base_nls.json
+python -m satmap_dataset.cli nls-download-json configs/run/base_nls.json
+```
+
+The downloaded GeoTIFFs land under `<download_root>/<year>/nls_<year>.tif` and
+are consumed by the existing `render` and `validate` stages unchanged.
+
 ## Development checks
 
 ```bash
