@@ -33,6 +33,36 @@ EPSG_2180_WKT = (
     'AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","2180"]]'
 )
 
+EPSG_3067_WKT = (
+    'PROJCS["ETRS89 / TM35FIN(E,N)",GEOGCS["ETRS89",'
+    'DATUM["European_Terrestrial_Reference_System_1989",'
+    'SPHEROID["GRS 1980",6378137,298.257222101]],'
+    'PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],'
+    'PROJECTION["Transverse_Mercator"],'
+    'PARAMETER["latitude_of_origin",0],'
+    'PARAMETER["central_meridian",27],'
+    'PARAMETER["scale_factor",0.9996],'
+    'PARAMETER["false_easting",500000],'
+    'PARAMETER["false_northing",0],UNIT["metre",1],'
+    'AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","3067"]]'
+)
+
+_KNOWN_PROJ_WKT: dict[int, str] = {
+    2180: EPSG_2180_WKT,
+    3067: EPSG_3067_WKT,
+}
+
+
+def _epsg_code(srs: str) -> int | None:
+    """Parse the integer EPSG code from a string like 'EPSG:3067'. Returns None if unparseable."""
+    upper = srs.strip().upper()
+    if not upper.startswith("EPSG:"):
+        return None
+    try:
+        return int(upper.split(":", 1)[1])
+    except ValueError:
+        return None
+
 
 @dataclass(frozen=True)
 class GeoRef:
@@ -446,7 +476,8 @@ def _can_reuse_render_output(
         return False
     if not out_path.with_suffix(".tfw").exists():
         return False
-    if target_srs.upper() == "EPSG:2180" and not out_path.with_suffix(".prj").exists():
+    epsg = _epsg_code(target_srs)
+    if epsg is not None and epsg in _KNOWN_PROJ_WKT and not out_path.with_suffix(".prj").exists():
         return False
 
     try:
@@ -456,8 +487,8 @@ def _can_reuse_render_output(
                 return False
             if page.tags.get("ModelPixelScaleTag") is None or page.tags.get("ModelTiepointTag") is None:
                 return False
-            if target_srs.upper() == "EPSG:2180":
-                if _extract_epsg_from_geokey(page) != 2180:
+            if epsg is not None:
+                if _extract_epsg_from_geokey(page) != epsg:
                     return False
         georef = _read_georef(out_path)
         expected_px_x, expected_px_y = _pixel_size_from_bbox(target_bbox, target_width, target_height)
@@ -482,29 +513,15 @@ def _pixel_size_from_bbox(target_bbox: BBox, target_width: int, target_height: i
     return pixel_size_x, pixel_size_y
 
 
-def _geo_key_directory_for_epsg_2180() -> tuple[int, ...]:
-    # GeoKeyDirectoryTag: header + entries (KeyID, TIFFTagLocation, Count, ValueOffset)
+def _geo_key_directory_for_epsg(epsg_code: int) -> tuple[int, ...]:
+    """Build a minimal GeoKeyDirectoryTag for a projected CRS in metres."""
+    # Header + entries (KeyID, TIFFTagLocation, Count, ValueOffset)
     return (
-        1,
-        1,
-        0,
-        4,
-        1024,
-        0,
-        1,
-        1,
-        1025,
-        0,
-        1,
-        1,
-        3072,
-        0,
-        1,
-        2180,
-        3076,
-        0,
-        1,
-        9001,
+        1, 1, 0, 4,
+        1024, 0, 1, 1,             # GTModelTypeGeoKey = ModelTypeProjected
+        1025, 0, 1, 1,             # GTRasterTypeGeoKey = RasterPixelIsArea
+        3072, 0, 1, int(epsg_code),  # ProjectedCSTypeGeoKey
+        3076, 0, 1, 9001,          # ProjLinearUnitsGeoKey = metre
     )
 
 
@@ -529,13 +546,15 @@ def _write_worldfile_and_prj(out_path: Path, target_bbox: BBox, target_width: in
         encoding="ascii",
     )
 
-    if srs.upper() == "EPSG:2180":
-        out_path.with_suffix(".prj").write_text(EPSG_2180_WKT, encoding="ascii")
+    epsg = _epsg_code(srs)
+    if epsg is not None and epsg in _KNOWN_PROJ_WKT:
+        out_path.with_suffix(".prj").write_text(_KNOWN_PROJ_WKT[epsg], encoding="ascii")
 
 
 def _apply_geotiff_tags_exiftool(out_path: Path, target_bbox: BBox, target_width: int, target_height: int, srs: str) -> bool:
     exiftool = shutil.which("exiftool")
-    if exiftool is None or srs.upper() != "EPSG:2180":
+    epsg = _epsg_code(srs)
+    if exiftool is None or epsg is None:
         return False
 
     pixel_size_x, pixel_size_y = _pixel_size_from_bbox(target_bbox, target_width, target_height)
@@ -549,7 +568,7 @@ def _apply_geotiff_tags_exiftool(out_path: Path, target_bbox: BBox, target_width
         f"-ModelTiePointTag={tie}",
         "-GTModelTypeGeoKey=1",
         "-GTRasterTypeGeoKey=1",
-        "-ProjectedCSTypeGeoKey=2180",
+        f"-ProjectedCSTypeGeoKey={epsg}",
         "-ProjLinearUnitsGeoKey=9001",
         str(out_path),
     ]
@@ -564,13 +583,14 @@ def _apply_geotiff_tags_tifffile(
     target_height: int,
     srs: str,
 ) -> bool:
-    if srs.upper() != "EPSG:2180":
+    epsg = _epsg_code(srs)
+    if epsg is None:
         raise ValueError(f"Unsupported SRS for GeoTIFF tagging: {srs}")
 
     pixel_size_x, pixel_size_y = _pixel_size_from_bbox(target_bbox, target_width, target_height)
     scale = (float(pixel_size_x), float(pixel_size_y), 0.0)
     tie = (0.0, 0.0, 0.0, float(target_bbox.min_x), float(target_bbox.max_y), 0.0)
-    geokey = _geo_key_directory_for_epsg_2180()
+    geokey = _geo_key_directory_for_epsg(epsg)
 
     temp_path = out_path.with_suffix(out_path.suffix + ".georef_tmp")
     if temp_path.exists():
