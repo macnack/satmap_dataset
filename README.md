@@ -177,6 +177,122 @@ dataset = SatelliteSeasonalHomographyDataset(
 
 The folder contains `year_YYYY.tif` with consistent width/height and `RGB_U8` profile.
 
+## Sweden / Lantmäteriet provider
+
+The pipeline supports two providers, selected via `--provider` (CLI) or the
+`provider` field in JSON configs:
+
+- `geoportal` (default) — Polish PZGiK WFS + WMS.
+- `lantmateriet` — Swedish Lantmäteriet STAC API for annual orthophotos
+  (Ortofoto Visning Årsvisa, 2006 onwards), with optional WMS fallback.
+
+The two providers share the same downstream stages, so `index → download → render → validate`
+and the `run`/`run-json`/`run-location-json` commands work identically — only
+the data source changes. EPSG defaults differ: Geoportal uses `EPSG:2180` and
+Lantmäteriet uses `EPSG:3006` (SWEREF 99 TM).
+
+> *Ortofoto Nedladdning* (the STAC product) is the **primary** source. As of
+> 2026 its license fee is **0 SEK**, but you still need a free Geotorget
+> account and an active subscription before `dl1.lantmateriet.se` will return
+> assets to your Basic-Auth requests. *Ortofoto Visning, Årsvisa* (the annual
+> WMS view service) is a **paid** product (~1.66 MSEK/year as of 2026); we
+> only allow it as an opt-in fallback (`wms_fallback_missing_years: true` plus
+> an explicit `provider_options.wms_url` and `provider_options.wms_layer`) and
+> it is **off by default**. Preserve the `© Lantmäteriet` attribution that the
+> STAC item metadata carries.
+
+### Configure the provider
+
+Per-call options live in `provider_options` on the run/index/download config:
+
+| Key                  | Purpose                                                |
+| -------------------- | ------------------------------------------------------ |
+| `stac_url`           | STAC `/search` endpoint                                |
+| `stac_collection`    | Collection ID (string or list)                         |
+| `wms_url`            | Annual WMS GetMap endpoint                             |
+| `wms_layer`          | WMS layer name                                         |
+| `wms_version`        | WMS version (default `1.3.0`)                          |
+| `year_policy`        | `exact_only`, `nearest_before`, `nearest_after`, or `nearest_any_with_max_delta` |
+| `max_year_delta`     | Required when `year_policy = nearest_any_with_max_delta` |
+| `api_key`            | Bearer token for STAC / WMS                            |
+
+Each `provider_options` key has an environment-variable fallback:
+`SATMAP_LANTMATERIET_STAC_URL`, `SATMAP_LANTMATERIET_STAC_COLLECTION`,
+`SATMAP_LANTMATERIET_WMS_URL`, `SATMAP_LANTMATERIET_WMS_LAYER`,
+`SATMAP_LANTMATERIET_API_KEY`, `SATMAP_LANTMATERIET_USERNAME`,
+`SATMAP_LANTMATERIET_PASSWORD`.
+
+`dl1.lantmateriet.se` requires Geotorget API credentials (a `lm_…`-style
+username plus generated password issued per subscribed product, distinct from
+your `lantmateriet.se` website login). 401 means missing/invalid credentials;
+403 means the subscription is not yet active for the requested asset. The
+downloader treats 4xx as non-retryable — no point burning the tile budget on a
+permission error.
+
+### Generate a 2 km bbox around Kisa
+
+```bash
+python scripts/make_bbox.py \
+  --center-lat 57.985 \
+  --center-lon 15.629 \
+  --size-meters 2000 \
+  --target-srs EPSG:3006
+```
+
+The script prints the bbox in EPSG:3006, a WGS84 GeoJSON polygon, and a ready-
+to-paste `python -m satmap_dataset.cli run` invocation. It uses `pyproj` if
+installed; otherwise it falls back to the system `proj` CLI.
+
+### Index 2010–2024 over Kisa
+
+```bash
+python -m satmap_dataset.cli index \
+  --provider lantmateriet \
+  --year-start 2010 \
+  --year-end 2024 \
+  --bbox "536194.910,6426213.280,538194.910,6428213.280" \
+  --srs EPSG:3006
+```
+
+### Run the full pipeline for Kisa
+
+```bash
+python -m satmap_dataset.cli run \
+  --provider lantmateriet \
+  --year-start 2010 \
+  --year-end 2024 \
+  --bbox "536194.910,6426213.280,538194.910,6428213.280" \
+  --srs EPSG:3006 \
+  --target-srs EPSG:3006 \
+  --sleep-min 0.8 \
+  --sleep-max 2.5 \
+  --concurrency 4 \
+  --render-root rendered_kisa \
+  --profile train
+```
+
+### Base + location JSON
+
+Pre-built configs live alongside the Polish ones:
+
+- `configs/run/base_lantmateriet.json` — defaults for the Sweden flow.
+- `configs/run/locations/kisa_sweden_2km.json` — Kisa center + 4 km² square.
+
+```bash
+python scripts/merge_json_config.py \
+  --base configs/run/base_lantmateriet.json \
+  --override configs/run/locations/kisa_sweden_2km.json \
+  --out configs/run/generated/kisa_sweden_2km.run.json
+
+python -m satmap_dataset.cli run-json configs/run/generated/kisa_sweden_2km.run.json
+```
+
+To enable the annual WMS fallback for years missing from STAC, set
+`wms_fallback_missing_years: true` in the merged config (or pass
+`--wms-fallback-missing-years` on the CLI). Falling back will still write
+`years_source_map[year] = "wms_fallback"` so downstream stages know the
+provenance per year.
+
 ## Development checks
 
 ```bash

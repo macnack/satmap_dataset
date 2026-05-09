@@ -12,6 +12,7 @@ from satmap_dataset.config import (
 )
 from satmap_dataset.models import DatasetManifest, IndexManifest
 from satmap_dataset.pipeline import downloader, index_builder, render, validator
+from satmap_dataset.providers import get_provider
 
 logger = logging.getLogger("satmap_dataset.run")
 
@@ -98,7 +99,9 @@ def _index_manifest_has_swapped_tile_bboxes(manifest: IndexManifest) -> bool:
 
 
 def _can_reuse_index(manifest: IndexManifest, config: RunConfig) -> bool:
-    return (
+    if manifest.provider != config.provider:
+        return False
+    base_match = (
         manifest.passed
         and manifest.year_start == config.year_start
         and manifest.year_end == config.year_end
@@ -106,9 +109,15 @@ def _can_reuse_index(manifest: IndexManifest, config: RunConfig) -> bool:
         and manifest.srs == config.srs
         and manifest.strict_years == config.strict_years
         and manifest.min_years == config.min_years
-        and manifest.wfs_bbox_axes_swapped == config.experimental_wfs_swap_bbox_axes
-        and not _index_manifest_has_swapped_tile_bboxes(manifest)
     )
+    if not base_match:
+        return False
+    if config.provider == "geoportal":
+        return (
+            manifest.wfs_bbox_axes_swapped == config.experimental_wfs_swap_bbox_axes
+            and not _index_manifest_has_swapped_tile_bboxes(manifest)
+        )
+    return True
 
 
 def _asset_exists(asset: str, dataset_manifest_path: Path) -> bool:
@@ -134,7 +143,9 @@ def _same_path_ref(a: str | None, b: Path, base: Path) -> bool:
 def _can_reuse_download(manifest: DatasetManifest, config: RunConfig, index_output: Path, download_output: Path) -> bool:
     if not manifest.passed or manifest.stage != "download":
         return False
-    if manifest.mode != config.mode:
+    if manifest.provider != config.provider:
+        return False
+    if config.provider == "geoportal" and manifest.mode != config.mode:
         return False
     if not _same_path_ref(manifest.source_manifest, index_output, download_output.parent):
         return False
@@ -182,6 +193,7 @@ def _write_wms_only_index(config: RunConfig, index_output: Path, year_availabili
         years_excluded_with_reason={},
         common_tile_ids=[],
         tile_sources_by_year={},
+        tile_acquisition_by_year={},
         passed=True,
         errors=[],
         warnings=["WFS index step skipped for mode=wms_tiled."],
@@ -222,8 +234,9 @@ def run(config: RunConfig) -> tuple[int, Path]:
     render_output = artifacts_dir / "dataset_manifest_render.json"
     validate_output = artifacts_dir / "validation_report.json"
 
+    provider = get_provider(config.provider)
     existing_index = _load_index_manifest(index_output)
-    if config.mode == "wms_tiled":
+    if config.provider == "geoportal" and config.mode == "wms_tiled":
         if existing_index and _can_reuse_index(existing_index, config):
             logger.info("Run: reusing existing WMS-only index manifest=%s", index_output)
         else:
@@ -242,8 +255,10 @@ def run(config: RunConfig) -> tuple[int, Path]:
             min_years=config.min_years,
             output_json=index_output,
             year_availability_output_json=year_availability_output,
+            provider=config.provider,
+            provider_options=dict(config.provider_options),
         )
-        index_code, _ = index_builder.run(index_config)
+        index_code, _ = provider.index(index_config)
         if index_code != 0:
             logger.error("Run: index failed output=%s", index_output)
             return index_code, index_output
@@ -270,8 +285,10 @@ def run(config: RunConfig) -> tuple[int, Path]:
             sleep_max=config.sleep_max,
             overwrite=config.overwrite,
             output_json=download_output,
+            provider=config.provider,
+            provider_options=dict(config.provider_options),
         )
-        download_code, _ = downloader.run(download_config)
+        download_code, _ = provider.download(download_config)
         if download_code != 0:
             logger.error("Run: download failed output=%s", download_output)
             return download_code, download_output

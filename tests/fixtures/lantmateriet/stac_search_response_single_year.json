@@ -1,0 +1,31 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "ortofoto_2022_kisa_1",
+      "collection": "ortofoto-arsvis",
+      "bbox": [536000.0, 6426000.0, 538500.0, 6428500.0],
+      "properties": {
+        "datetime": "2022-06-15T10:00:00Z",
+        "proj:epsg": 3006,
+        "gsd": 0.16,
+        "license": "CC-BY-4.0",
+        "attribution": "© Lantmäteriet"
+      },
+      "assets": {
+        "data": {
+          "href": "https://example.org/lantmateriet/ortofoto/2022/kisa_1.tif",
+          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+          "roles": ["data"]
+        },
+        "thumbnail": {
+          "href": "https://example.org/lantmateriet/ortofoto/2022/kisa_1.jpg",
+          "type": "image/jpeg",
+          "roles": ["thumbnail"]
+        }
+      }
+    }
+  ],
+  "links": []
+}

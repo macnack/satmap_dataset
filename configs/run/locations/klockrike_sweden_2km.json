@@ -1,0 +1,9 @@
+{
+  "location_name": "Klockrike",
+  "center_lat": 58.489,
+  "center_lon": 15.367,
+  "area_km2": 4.0,
+  "srs": "EPSG:3006",
+  "target_srs": "EPSG:3006",
+  "provider": "lantmateriet"
+}

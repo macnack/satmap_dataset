@@ -212,13 +212,19 @@ def _validate_sidecars(asset_path: Path, target_srs: str) -> list[str]:
             except ValueError:
                 errors.append(f"World file contains non-numeric values for {asset_path.name}")
 
-    if target_srs.upper() == "EPSG:2180":
+    expected_srs = target_srs.upper()
+    expected_codes = {"EPSG:2180": ("2180", ("CS92",)), "EPSG:3006": ("3006", ("SWEREF99 TM",))}
+    if expected_srs in expected_codes:
+        code, fallback_markers = expected_codes[expected_srs]
         if not prj.exists():
             errors.append(f"Missing projection file for {asset_path.name}: {prj.name}")
         else:
             prj_text = prj.read_text(encoding="ascii", errors="ignore")
-            if "EPSG\",\"2180" not in prj_text and "CS92" not in prj_text:
-                errors.append(f"Projection file does not indicate EPSG:2180 for {asset_path.name}")
+            marker_in_authority = f'EPSG","{code}'
+            if marker_in_authority not in prj_text and not any(m in prj_text for m in fallback_markers):
+                errors.append(
+                    f"Projection file does not indicate {expected_srs} for {asset_path.name}"
+                )
     return errors
 
 
@@ -288,8 +294,12 @@ def run(config: ValidateConfig) -> tuple[int, Path]:
                 report.passed = False
 
             georef_bbox, epsg = _read_georef_bbox_and_epsg(asset_path)
-            if target_srs == "EPSG:2180" and epsg != 2180:
-                report.errors.append(f"Invalid GeoTIFF EPSG for {asset}: {epsg} expected 2180")
+            expected_epsg_by_srs = {"EPSG:2180": 2180, "EPSG:3006": 3006}
+            expected_epsg = expected_epsg_by_srs.get(target_srs)
+            if expected_epsg is not None and epsg != expected_epsg:
+                report.errors.append(
+                    f"Invalid GeoTIFF EPSG for {asset}: {epsg} expected {expected_epsg}"
+                )
                 report.passed = False
 
             if target_bbox is not None and width_ref is not None and height_ref is not None:

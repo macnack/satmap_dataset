@@ -2,8 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+PROVIDER_GEOPORTAL = "geoportal"
+PROVIDER_LANTMATERIET = "lantmateriet"
+ALLOWED_PROVIDERS = {PROVIDER_GEOPORTAL, PROVIDER_LANTMATERIET}
 
 
 def _validate_bbox(value: str) -> str:
@@ -32,6 +37,15 @@ class IndexConfig(BaseModel):
     min_years: int = Field(default=1, ge=1)
     output_json: Path = Path("artifacts/index_manifest.json")
     year_availability_output_json: Path = Path("artifacts/year_availability_report.json")
+    provider: str = PROVIDER_GEOPORTAL
+    provider_options: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        if value not in ALLOWED_PROVIDERS:
+            raise ValueError(f"provider must be one of {sorted(ALLOWED_PROVIDERS)}")
+        return value
 
     @field_validator("bbox")
     @classmethod
@@ -67,23 +81,34 @@ class DownloadConfig(BaseModel):
     sleep_max: float = Field(default=2.2, ge=0.0)
     overwrite: bool = False
     output_json: Path = Path("artifacts/dataset_manifest_download.json")
+    provider: str = PROVIDER_GEOPORTAL
+    provider_options: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        if value not in ALLOWED_PROVIDERS:
+            raise ValueError(f"provider must be one of {sorted(ALLOWED_PROVIDERS)}")
+        return value
 
     @model_validator(mode="after")
     def validate_sleep_range(self) -> "DownloadConfig":
         if self.sleep_max < self.sleep_min:
             raise ValueError("sleep_max must be >= sleep_min")
-        allowed_modes = {"wms_tiled", "wfs_render", "hybrid"}
-        if self.mode not in allowed_modes:
-            raise ValueError(f"mode must be one of {sorted(allowed_modes)}")
+        if self.provider == PROVIDER_GEOPORTAL:
+            allowed_modes = {"wms_tiled", "wfs_render", "hybrid"}
+            if self.mode not in allowed_modes:
+                raise ValueError(f"mode must be one of {sorted(allowed_modes)} for provider=geoportal")
         allowed_profiles = {"train", "reference"}
         if self.profile not in allowed_profiles:
             raise ValueError(f"profile must be one of {sorted(allowed_profiles)}")
-        if (self.profile == "reference" or self.mode in {"wms_tiled", "hybrid"}) and self.bbox is None:
-            raise ValueError("bbox is required for profile='reference' and for modes using WMS")
+        if self.provider == PROVIDER_GEOPORTAL:
+            if (self.profile == "reference" or self.mode in {"wms_tiled", "hybrid"}) and self.bbox is None:
+                raise ValueError("bbox is required for profile='reference' and for modes using WMS")
         if self.bbox is not None:
             _validate_bbox(self.bbox)
         self.force_wms_years = sorted(set(self.force_wms_years))
-        if self.mode == "wfs_render" and self.force_wms_years:
+        if self.provider == PROVIDER_GEOPORTAL and self.mode == "wfs_render" and self.force_wms_years:
             raise ValueError("force_wms_years requires mode 'hybrid' or 'wms_tiled'")
         return self
 
@@ -155,7 +180,7 @@ class RenderConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_render_profile(self) -> "RenderConfig":
-        allowed_modes = {"wms_tiled", "wfs_render", "hybrid"}
+        allowed_modes = {"wms_tiled", "wfs_render", "hybrid", "stac"}
         if self.mode not in allowed_modes:
             raise ValueError(f"mode must be one of {sorted(allowed_modes)}")
         allowed_profiles = {"train", "reference"}
@@ -217,11 +242,20 @@ class RunConfig(BaseModel):
     sleep_max: float = Field(default=2.2, ge=0.0)
     overwrite: bool = False
     artifacts_dir: Path = Path("artifacts")
+    provider: str = PROVIDER_GEOPORTAL
+    provider_options: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("bbox")
     @classmethod
     def validate_bbox(cls, value: str) -> str:
         return _validate_bbox(value)
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        if value not in ALLOWED_PROVIDERS:
+            raise ValueError(f"provider must be one of {sorted(ALLOWED_PROVIDERS)}")
+        return value
 
     @model_validator(mode="after")
     def validate_year_range(self) -> "RunConfig":
@@ -231,14 +265,15 @@ class RunConfig(BaseModel):
             raise ValueError("sleep_max must be >= sleep_min")
         if self.target_bbox is not None:
             _validate_bbox(self.target_bbox)
-        allowed_modes = {"wms_tiled", "wfs_render", "hybrid"}
-        if self.mode not in allowed_modes:
-            raise ValueError(f"mode must be one of {sorted(allowed_modes)}")
+        if self.provider == PROVIDER_GEOPORTAL:
+            allowed_modes = {"wms_tiled", "wfs_render", "hybrid"}
+            if self.mode not in allowed_modes:
+                raise ValueError(f"mode must be one of {sorted(allowed_modes)} for provider=geoportal")
         allowed_profiles = {"train", "reference"}
         if self.profile not in allowed_profiles:
             raise ValueError(f"profile must be one of {sorted(allowed_profiles)}")
         self.force_wms_years = sorted(set(self.force_wms_years))
-        if self.mode == "wfs_render" and self.force_wms_years:
+        if self.provider == PROVIDER_GEOPORTAL and self.mode == "wfs_render" and self.force_wms_years:
             raise ValueError("force_wms_years requires mode 'hybrid' or 'wms_tiled'")
         allowed_resample = {"bilinear", "nearest"}
         if self.resample_method not in allowed_resample:

@@ -10,14 +10,14 @@ sys.path.insert(0, str(ROOT / "tests"))
 from satmap_dataset.config import IndexConfig
 from satmap_dataset.models import IndexManifest
 from satmap_dataset.pipeline import index_builder
-from _wfs_test_helpers import mock_statuses_2015_2026, mock_tiles_by_year_2015_2026
+from _wfs_test_helpers import mock_probe_result_2015_2026
 
 
 def test_min_years_guard(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         index_builder,
         "probe_years_wfs_with_tiles",
-        lambda *args, **kwargs: (mock_statuses_2015_2026(), mock_tiles_by_year_2015_2026()),
+        lambda *args, **kwargs: mock_probe_result_2015_2026(),
     )
     config = IndexConfig(
         year_start=2015,

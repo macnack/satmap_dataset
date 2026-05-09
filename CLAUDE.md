@@ -1,0 +1,110 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+`satmap_dataset` builds a year-aware orthophoto dataset from the Polish Geoportal (`mapy.geoportal.gov.pl`). It probes WFS for per-year availability, downloads TIFFs (WFS direct + WMS fallback), then renders all years to a shared NN-ready grid via `pyvips`. Outputs are `RGB_U8` GeoTIFFs in `EPSG:2180` plus JSON manifests at every stage.
+
+Python ≥ 3.10. Package layout is `src/satmap_dataset/` with the project installed editable via `pip install -e ".[dev]"`. `direnv` (`.envrc`) auto-activates `.venv` and exports `PYTHONPATH=$PWD/src` along with `SATMAP_LOCATIONS_ROOT`, `SATMAP_LOCATIONS_DIR`, `SATMAP_BASE_JSON`.
+
+System dependency on Linux: `libvips42` and `libvips-tools` (`pyvips` will not import without them).
+
+## Common Commands
+
+```bash
+# Install (editable + dev extras)
+just install                      # or: python -m pip install -e ".[dev]"
+
+# Tests (pytest is configured with -q and testpaths=tests in pyproject.toml)
+pytest                            # all tests
+pytest tests/test_models_schema.py            # single file
+pytest -k "year_filter"                       # by name
+pytest tests/test_render_helpers.py::test_x   # single test
+
+# Single location (merge base.json + location.json, then run end-to-end)
+just run-location-json location_json=configs/run/locations/poznan.json
+just index-location-json location_json=configs/run/locations/poznan.json
+
+# All locations in a directory (no merge step needed)
+just run-all locations_4          # alias for $SATMAP_LOCATIONS_ROOT/locations_4
+just index-all-json               # uses default configs/run/locations
+just summary-locations            # auto-picks locations dir; prints status table
+
+# Manage on-disk roots (downloads_*, rendered_*, artifacts_*) for a locations dir
+just roots-list locations_4
+just roots-move locations_4 target_dir=./archive execute=1
+just roots-delete locations_4 execute=1
+
+# Direct CLI (skip just; same module either way)
+python -m satmap_dataset.cli --help
+python -m satmap_dataset.cli run --year-start 2015 --year-end 2025 --bbox "210300,521900,210500,522100" --profile reference
+```
+
+CLI exit codes are load-bearing — callers parse them: `0` success, `1` policy/data failure (e.g. not enough years), `2` invalid CLI/config arguments. Every command also prints the absolute path of the artifact it wrote as its last stdout line; orchestrators rely on this.
+
+## Architecture
+
+### Pipeline stages and reuse
+
+Four stages, each implemented as `src/satmap_dataset/pipeline/<stage>.py` exposing a single `run(config) -> tuple[int, Path]`:
+
+1. `index_builder.run` — WFS `GetCapabilities` then per-year `GetFeature` → `index_manifest.json` + `year_availability_report.json`.
+2. `downloader.run` — async `httpx`+`aiofiles` of `url_do_pobrania` URLs from the index, plus WMS-tiled fallback for years missing in WFS → `dataset_manifest_download.json`.
+3. `render.run` — pyvips composes per-year mosaics on a shared grid → `dataset_manifest_render.json` + `<render_root>/year_YYYY.tif` files.
+4. `validator.run` — checks asset existence, pixel profile, sizes, EPSG, georef, sidecars → `validation_report.json`.
+
+`pipeline/run_all.py` orchestrates all four and is the entry point for the `run`, `run-json`, and `run-location-json` CLI commands. It implements **idempotent reuse**:
+
+- Index is reused if `_can_reuse_index` matches (year range, bbox, srs, strict/min flags) and tile bboxes don't appear axis-swapped.
+- Download is reused if `_can_reuse_download` matches mode/profile/`force_wms_years` and every asset path on disk still exists.
+- `run-all-location-json` skips a whole location when `<artifacts_dir>/validation_report.json` already shows `passed=true`.
+
+When changing pipeline behavior, also update these reuse predicates — otherwise `run-all` will silently keep stale outputs.
+
+### Models and configs
+
+- `src/satmap_dataset/models.py` — Pydantic v2 manifest schemas (`IndexManifest`, `DatasetManifest`, `ValidationReport`, `YearAvailabilityReport`). These are the on-disk JSON contract; bumping fields means regenerating fixtures.
+- `src/satmap_dataset/config.py` — Pydantic v2 input configs (`IndexConfig`, `DownloadConfig`, `RenderConfig`, `ValidateConfig`, `RunConfig`, plus a legacy `MosaicConfig`). Each enforces invariants (bbox xmin<xmax, mode in `{wms_tiled, wfs_render, hybrid}`, profile in `{train, reference}`, compression matches `deflate|jpeg|jpegNN`, `target_width`/`target_height` paired, etc.). Always construct configs via the model — direct dict access bypasses validation.
+
+### CLI surface (single file: `cli.py`)
+
+Every command has three flavors that share the same underlying `run()` functions:
+
+1. **Flag form** — `index`, `download`, `render`, `mosaic` (alias for render), `validate`, `run`. Long argument lists; useful for ad-hoc invocations.
+2. **JSON form** — `index-json`, `download-json`, `render-json`, `validate-json`, `run-json`. Take a single JSON file mapped 1:1 onto the corresponding Pydantic config.
+3. **Base + location form** — `*-location-json` (single) and `*-all-location-json` (batch over a directory). Merges `configs/run/base.json` (defaults) with `configs/run/locations/<name>.json` (just `location_name` + `center_lat` + `center_lon`).
+
+The base+location merge logic lives in `_build_*_config_from_base_and_location` helpers and is the part most tests exercise.
+
+### bbox resolution
+
+Two mutually exclusive ways to specify the AOI:
+
+- `--bbox xmin,ymin,xmax,ymax` in the chosen `--srs` (default `EPSG:2180`, project axis order `x,y`).
+- Center mode: `--center-lat`/`--center-lon` (WGS84) plus `--square-km` (default `4.0` → 2 km × 2 km square). EPSG:2180 only.
+
+JSON inputs accept `center_lat`/`center_lon` plus either `square_km` or `area_km2` (mutually exclusive). Resolution goes through `_resolve_json_center_bbox` and uses `pyproj` if available, else shells out to the `proj` CLI — both are acceptable, but errors mention both. See `_lonlat_to_epsg2180` in `cli.py`.
+
+### Location → output directory convention
+
+When a config has `location_name` set, `_apply_location_paths_policy` derives `download_root`, `render_root`, `artifacts_dir` from the slug (NFKD → ASCII → lowercase → non-alnum to `_` → collapse repeats). E.g. `"Poznań"` → `downloads_poznan`, `rendered_poznan`, `artifacts_poznan` under the repo root. These dirs are gitignored. `scripts/manage_location_roots.py` (exposed as `just roots-*`) walks them.
+
+### External services
+
+- WFS catalog: `https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WFS/Skorowidze` (year typenames matched by regex `SkorowidzOrtof\w*?(\d{4})$`).
+- WMS fallback: `https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMS/StandardResolutionTime`.
+
+Geoportal is rate-sensitive even for sequential calls. Every request goes through `geoportal/http.py` with a `RetryPolicy` and a randomized pre-request sleep (`sleep_min`/`sleep_max`, defaults `0.6`–`2.2 s`). Don't remove the jitter or batch requests aggressively without testing against a real run.
+
+### Profiles and modes
+
+- `mode`: `wfs_render` (WFS only), `wms_tiled` (WMS only — index step is stubbed via `_write_wms_only_index`), `hybrid` (default; WFS-first, WMS for missing years).
+- `profile`: `train` (default) or `reference`. `reference` mirrors a legacy `download_map.py` with geometry-driven output sizing (`px_per_meter`) and additional QC fields in the render manifest (`years_source_map`, `coverage_ratio_by_year`, `color_qc_by_year`).
+
+## Conventions worth preserving
+
+- Stage `run()` functions return `(exit_code, artifact_path)` and write a single JSON manifest. Don't return None or print the path elsewhere — the CLI wrapper relies on the tuple and the artifact path is the contract for shell composition.
+- New config fields must default-resolve cleanly when missing from `base.json` or a location JSON; existing generated configs in `configs/run/generated/` are checked in and act as fixtures.
+- The `mosaic` CLI command is a backwards-compatible alias for `render`. Don't reintroduce a separate mosaic stage.
+- `experimental_wfs_swap_bbox_axes` is a deprecated escape hatch for axis-order bugs; prefer fixing detection in `_index_manifest_has_swapped_tile_bboxes`.

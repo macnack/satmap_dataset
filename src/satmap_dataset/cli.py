@@ -25,6 +25,7 @@ from satmap_dataset.config import (
     ValidateConfig,
 )
 from satmap_dataset.pipeline import downloader, index_builder, render, run_all, validator
+from satmap_dataset.providers import get_provider
 
 app = typer.Typer(help="satmap_dataset CLI (WFS-first pipeline)", no_args_is_help=True)
 console = Console(stderr=True)
@@ -43,61 +44,53 @@ def _finish(exit_code: int, artifact_path: Path) -> None:
     raise typer.Exit(code=exit_code)
 
 
-def _lonlat_to_epsg2180(lon: float, lat: float) -> tuple[float, float]:
-    # Return strict EPSG:2180 project axis order: (x, y).
-    # Example Poznan center 52.4012627,16.9517999 -> x~360700, y~505900.
+_CENTER_MODE_SUPPORTED_SRS = {"EPSG:2180", "EPSG:3006"}
+
+
+def _lonlat_to_target_srs(lon: float, lat: float, target_srs: str) -> tuple[float, float]:
+    from satmap_dataset.providers.lantmateriet.crs import transform_point
+
     try:
-        from pyproj import Transformer
-        transformer = Transformer.from_crs("EPSG:4326", "EPSG:2180", always_xy=True)
-        x, y = transformer.transform(lon, lat)
-        return float(x), float(y)
-    except Exception:
-        proj_cmd = [
-            "proj",
-            "+proj=tmerc",
-            "+lat_0=0",
-            "+lon_0=19",
-            "+k=0.9993",
-            "+x_0=500000",
-            "+y_0=-5300000",
-            "+ellps=GRS80",
-            "+units=m",
-            "+no_defs",
-        ]
-        try:
-            completed = subprocess.run(
-                proj_cmd,
-                input=f"{lon} {lat}\n",
-                text=True,
-                capture_output=True,
-                check=True,
-            )
-        except Exception as exc:
-            raise RuntimeError(
-                "Center-based bbox input requires pyproj or the PROJ 'proj' CLI in PATH."
-            ) from exc
-        values = completed.stdout.strip().split()
-        if len(values) < 2:
-            raise RuntimeError("Failed to parse PROJ output for center-based bbox conversion.")
-        try:
-            x = float(values[0])
-            y = float(values[1])
-        except ValueError as exc:
-            raise RuntimeError("Failed to parse numeric PROJ output for center-based bbox conversion.") from exc
-        return x, y
+        return transform_point("EPSG:4326", target_srs, lon, lat)
+    except Exception as exc:
+        raise RuntimeError(
+            "Center-based bbox input requires pyproj or the PROJ 'proj' CLI in PATH."
+        ) from exc
 
 
-def _bbox_from_center_latlon(center_lat: float, center_lon: float, square_km: float) -> str:
+def _bbox_from_center_latlon(
+    center_lat: float, center_lon: float, square_km: float, *, target_srs: str = "EPSG:2180"
+) -> str:
     if square_km <= 0:
         raise ValueError("square_km must be > 0")
-    center_x, center_y = _lonlat_to_epsg2180(center_lon, center_lat)
-    side_km = math.sqrt(square_km)
-    half_size_m = (side_km * 1000.0) / 2.0
+    side_m = math.sqrt(square_km) * 1000.0
+    return _bbox_from_center_rect(
+        center_lat,
+        center_lon,
+        width_meters=side_m,
+        height_meters=side_m,
+        target_srs=target_srs,
+    )
+
+
+def _bbox_from_center_rect(
+    center_lat: float,
+    center_lon: float,
+    *,
+    width_meters: float,
+    height_meters: float,
+    target_srs: str = "EPSG:2180",
+) -> str:
+    if width_meters <= 0 or height_meters <= 0:
+        raise ValueError("width_meters and height_meters must be > 0")
+    center_x, center_y = _lonlat_to_target_srs(center_lon, center_lat, target_srs)
+    half_w = width_meters / 2.0
+    half_h = height_meters / 2.0
     return (
-        f"{center_x - half_size_m:.3f},"
-        f"{center_y - half_size_m:.3f},"
-        f"{center_x + half_size_m:.3f},"
-        f"{center_y + half_size_m:.3f}"
+        f"{center_x - half_w:.3f},"
+        f"{center_y - half_h:.3f},"
+        f"{center_x + half_w:.3f},"
+        f"{center_y + half_h:.3f}"
     )
 
 
@@ -109,21 +102,49 @@ def _resolve_bbox_input(
     square_km: float | None,
     srs: str,
     required: bool,
+    width_meters: float | None = None,
+    height_meters: float | None = None,
 ) -> str | None:
-    center_mode_supplied = any(value is not None for value in (center_lat, center_lon, square_km))
+    rect_supplied = width_meters is not None or height_meters is not None
+    center_mode_supplied = any(
+        value is not None for value in (center_lat, center_lon, square_km)
+    ) or rect_supplied
     if bbox is not None and center_mode_supplied:
         raise typer.BadParameter(
-            "Provide either --bbox or center mode (--center-lat/--center-lon/--square-km), not both."
+            "Provide either --bbox or center mode (--center-lat/--center-lon/--square-km/"
+            "--width-meters+--height-meters), not both."
+        )
+    if rect_supplied and square_km is not None:
+        raise typer.BadParameter(
+            "Use either square_km/area_km2 or width_meters+height_meters, not both."
+        )
+    if rect_supplied and (width_meters is None or height_meters is None):
+        raise typer.BadParameter(
+            "Rectangular center mode requires both width_meters and height_meters."
         )
 
     if center_mode_supplied:
         if center_lat is None or center_lon is None:
             raise typer.BadParameter("Center mode requires both --center-lat and --center-lon.")
-        if srs.upper() != "EPSG:2180":
-            raise typer.BadParameter("Center mode currently supports only --srs EPSG:2180.")
-        effective_square_km = square_km if square_km is not None else DEFAULT_CENTER_SQUARE_KM
+        normalized_srs = srs.upper()
+        if normalized_srs not in _CENTER_MODE_SUPPORTED_SRS:
+            raise typer.BadParameter(
+                "Center mode currently supports only "
+                f"{sorted(_CENTER_MODE_SUPPORTED_SRS)}, got --srs {srs}."
+            )
         try:
-            return _bbox_from_center_latlon(center_lat, center_lon, effective_square_km)
+            if rect_supplied:
+                return _bbox_from_center_rect(
+                    center_lat,
+                    center_lon,
+                    width_meters=float(width_meters),
+                    height_meters=float(height_meters),
+                    target_srs=normalized_srs,
+                )
+            effective_square_km = square_km if square_km is not None else DEFAULT_CENTER_SQUARE_KM
+            return _bbox_from_center_latlon(
+                center_lat, center_lon, effective_square_km, target_srs=normalized_srs
+            )
         except RuntimeError as error:
             raise typer.BadParameter(str(error)) from error
         except ValueError as error:
@@ -170,9 +191,15 @@ def _resolve_json_center_bbox(payload: dict[str, object], *, required: bool) -> 
     center_lon = _as_optional_float(normalized.get("center_lon"), "center_lon")
     square_km = _as_optional_float(normalized.get("square_km"), "square_km")
     area_km2 = _as_optional_float(normalized.get("area_km2"), "area_km2")
+    width_meters = _as_optional_float(normalized.get("width_meters"), "width_meters")
+    height_meters = _as_optional_float(normalized.get("height_meters"), "height_meters")
     if square_km is not None and area_km2 is not None:
         raise typer.BadParameter("Use only one of square_km or area_km2 in JSON params.")
     effective_square_km = square_km if square_km is not None else area_km2
+    # Rectangular spec (width+height) overrides any square spec inherited from
+    # a base config — caller intent is clearly to use the rectangle.
+    if width_meters is not None and height_meters is not None:
+        effective_square_km = None
     bbox_value = normalized.get("bbox")
     bbox = str(bbox_value) if bbox_value is not None else None
     srs = str(normalized.get("srs", "EPSG:2180"))
@@ -183,6 +210,8 @@ def _resolve_json_center_bbox(payload: dict[str, object], *, required: bool) -> 
         square_km=effective_square_km,
         srs=srs,
         required=required,
+        width_meters=width_meters,
+        height_meters=height_meters,
     )
     normalized["bbox"] = resolved_bbox
     normalized["srs"] = srs
@@ -190,6 +219,8 @@ def _resolve_json_center_bbox(payload: dict[str, object], *, required: bool) -> 
     normalized.pop("center_lon", None)
     normalized.pop("square_km", None)
     normalized.pop("area_km2", None)
+    normalized.pop("width_meters", None)
+    normalized.pop("height_meters", None)
     return normalized
 
 
@@ -488,6 +519,11 @@ def index_command(
         Path("artifacts/year_availability_report.json"),
         help="Output year availability report JSON path.",
     ),
+    provider: str = typer.Option(
+        "geoportal",
+        "--provider",
+        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+    ),
 ) -> None:
     try:
         resolved_bbox = _resolve_bbox_input(
@@ -513,13 +549,14 @@ def index_command(
             min_years=min_years,
             output_json=output_json,
             year_availability_output_json=year_availability_output_json,
+            provider=provider,
         )
     except ValidationError as error:
         _print_validation_error(error)
         raise typer.Exit(code=2) from error
 
     try:
-        exit_code, artifact_path = index_builder.run(config)
+        exit_code, artifact_path = get_provider(config.provider).index(config)
     except httpx.HTTPError as error:
         console.print(
             "[red]Index request failed due to transient server/network error.[/red] "
@@ -584,6 +621,11 @@ def download_command(
     output_json: Path = typer.Option(
         Path("artifacts/dataset_manifest_download.json"), help="Output dataset manifest JSON."
     ),
+    provider: str = typer.Option(
+        "geoportal",
+        "--provider",
+        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+    ),
 ) -> None:
     try:
         resolved_bbox = _resolve_bbox_input(
@@ -617,12 +659,13 @@ def download_command(
             sleep_max=sleep_max,
             overwrite=overwrite,
             output_json=output_json,
+            provider=provider,
         )
     except ValidationError as error:
         _print_validation_error(error)
         raise typer.Exit(code=2) from error
 
-    exit_code, artifact_path = downloader.run(config)
+    exit_code, artifact_path = get_provider(config.provider).download(config)
     _finish(exit_code, artifact_path)
 
 
@@ -845,6 +888,11 @@ def run_command(
     sleep_max: float = typer.Option(2.2, min=0.0, help="Random pre-request sleep maximum."),
     overwrite: bool = typer.Option(False, "--overwrite/--no-overwrite", help="Overwrite existing files."),
     artifacts_dir: Path = typer.Option(Path("artifacts"), help="Directory for pipeline artifacts."),
+    provider: str = typer.Option(
+        "geoportal",
+        "--provider",
+        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+    ),
 ) -> None:
     try:
         resolved_bbox = _resolve_bbox_input(
@@ -897,6 +945,7 @@ def run_command(
             sleep_max=sleep_max,
             overwrite=overwrite,
             artifacts_dir=artifacts_dir,
+            provider=provider,
         )
     except ValidationError as error:
         _print_validation_error(error)
@@ -924,7 +973,7 @@ def index_json_command(
         _print_validation_error(error)
         raise typer.Exit(code=2) from error
 
-    exit_code, artifact_path = index_builder.run(config)
+    exit_code, artifact_path = get_provider(config.provider).index(config)
     _finish(exit_code, artifact_path)
 
 
@@ -946,7 +995,7 @@ def download_json_command(
         _print_validation_error(error)
         raise typer.Exit(code=2) from error
 
-    exit_code, artifact_path = downloader.run(config)
+    exit_code, artifact_path = get_provider(config.provider).download(config)
     _finish(exit_code, artifact_path)
 
 
@@ -1151,7 +1200,7 @@ def index_all_location_json_command(
                 raise typer.Exit(code=2) from error
             continue
 
-        exit_code, artifact_path = index_builder.run(config)
+        exit_code, artifact_path = get_provider(config.provider).index(config)
         console.print(str(artifact_path))
         if exit_code != 0:
             failures.append(f"{location_json}: exit={exit_code}")
@@ -1206,7 +1255,7 @@ def download_all_location_json_command(
                 raise typer.Exit(code=2) from error
             continue
 
-        exit_code, artifact_path = downloader.run(config)
+        exit_code, artifact_path = get_provider(config.provider).download(config)
         console.print(str(artifact_path))
         if exit_code != 0:
             failures.append(f"{location_json}: exit={exit_code}")

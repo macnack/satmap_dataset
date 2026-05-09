@@ -33,6 +33,32 @@ EPSG_2180_WKT = (
     'AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","2180"]]'
 )
 
+EPSG_3006_WKT = (
+    'PROJCS["SWEREF99 TM",GEOGCS["SWEREF99",'
+    'DATUM["SWEREF99",'
+    'SPHEROID["GRS 1980",6378137,298.257222101]],'
+    'PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],'
+    'PROJECTION["Transverse_Mercator"],'
+    'PARAMETER["latitude_of_origin",0],'
+    'PARAMETER["central_meridian",15],'
+    'PARAMETER["scale_factor",0.9996],'
+    'PARAMETER["false_easting",500000],'
+    'PARAMETER["false_northing",0],UNIT["metre",1],'
+    'AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","3006"]]'
+)
+
+_PROJ_WKT_BY_EPSG = {2180: EPSG_2180_WKT, 3006: EPSG_3006_WKT}
+
+
+def _epsg_code_from_srs(srs: str) -> int | None:
+    upper = srs.upper().strip()
+    if upper.startswith("EPSG:"):
+        try:
+            return int(upper.split(":", 1)[1])
+        except ValueError:
+            return None
+    return None
+
 
 @dataclass(frozen=True)
 class GeoRef:
@@ -446,7 +472,8 @@ def _can_reuse_render_output(
         return False
     if not out_path.with_suffix(".tfw").exists():
         return False
-    if target_srs.upper() == "EPSG:2180" and not out_path.with_suffix(".prj").exists():
+    target_epsg = _epsg_code_from_srs(target_srs)
+    if target_epsg in _PROJ_WKT_BY_EPSG and not out_path.with_suffix(".prj").exists():
         return False
 
     try:
@@ -456,8 +483,8 @@ def _can_reuse_render_output(
                 return False
             if page.tags.get("ModelPixelScaleTag") is None or page.tags.get("ModelTiepointTag") is None:
                 return False
-            if target_srs.upper() == "EPSG:2180":
-                if _extract_epsg_from_geokey(page) != 2180:
+            if target_epsg in _PROJ_WKT_BY_EPSG:
+                if _extract_epsg_from_geokey(page) != target_epsg:
                     return False
         georef = _read_georef(out_path)
         expected_px_x, expected_px_y = _pixel_size_from_bbox(target_bbox, target_width, target_height)
@@ -483,28 +510,19 @@ def _pixel_size_from_bbox(target_bbox: BBox, target_width: int, target_height: i
 
 
 def _geo_key_directory_for_epsg_2180() -> tuple[int, ...]:
-    # GeoKeyDirectoryTag: header + entries (KeyID, TIFFTagLocation, Count, ValueOffset)
+    return _geo_key_directory_for_projected_epsg(2180)
+
+
+def _geo_key_directory_for_projected_epsg(code: int) -> tuple[int, ...]:
+    # GeoKeyDirectoryTag: header + entries (KeyID, TIFFTagLocation, Count, ValueOffset).
+    # 1024=GTModelType (1=projected), 1025=GTRasterType (1=PixelIsArea),
+    # 3072=ProjectedCSType, 3076=ProjLinearUnits (9001=metre).
     return (
-        1,
-        1,
-        0,
-        4,
-        1024,
-        0,
-        1,
-        1,
-        1025,
-        0,
-        1,
-        1,
-        3072,
-        0,
-        1,
-        2180,
-        3076,
-        0,
-        1,
-        9001,
+        1, 1, 0, 4,
+        1024, 0, 1, 1,
+        1025, 0, 1, 1,
+        3072, 0, 1, int(code),
+        3076, 0, 1, 9001,
     )
 
 
@@ -529,8 +547,10 @@ def _write_worldfile_and_prj(out_path: Path, target_bbox: BBox, target_width: in
         encoding="ascii",
     )
 
-    if srs.upper() == "EPSG:2180":
-        out_path.with_suffix(".prj").write_text(EPSG_2180_WKT, encoding="ascii")
+    epsg_code = _epsg_code_from_srs(srs)
+    wkt = _PROJ_WKT_BY_EPSG.get(epsg_code) if epsg_code is not None else None
+    if wkt is not None:
+        out_path.with_suffix(".prj").write_text(wkt, encoding="ascii")
 
 
 def _apply_geotiff_tags_exiftool(out_path: Path, target_bbox: BBox, target_width: int, target_height: int, srs: str) -> bool:
@@ -564,13 +584,14 @@ def _apply_geotiff_tags_tifffile(
     target_height: int,
     srs: str,
 ) -> bool:
-    if srs.upper() != "EPSG:2180":
+    epsg_code = _epsg_code_from_srs(srs)
+    if epsg_code is None or epsg_code not in _PROJ_WKT_BY_EPSG:
         raise ValueError(f"Unsupported SRS for GeoTIFF tagging: {srs}")
 
     pixel_size_x, pixel_size_y = _pixel_size_from_bbox(target_bbox, target_width, target_height)
     scale = (float(pixel_size_x), float(pixel_size_y), 0.0)
     tie = (0.0, 0.0, 0.0, float(target_bbox.min_x), float(target_bbox.max_y), 0.0)
-    geokey = _geo_key_directory_for_epsg_2180()
+    geokey = _geo_key_directory_for_projected_epsg(epsg_code)
 
     temp_path = out_path.with_suffix(out_path.suffix + ".georef_tmp")
     if temp_path.exists():
@@ -823,6 +844,7 @@ def run(config: RenderConfig) -> tuple[int, Path]:
             years_excluded_with_reason=source_manifest.years_excluded_with_reason,
             common_tile_ids=source_manifest.common_tile_ids,
             tile_sources_by_year=source_manifest.tile_sources_by_year,
+            tile_acquisition_by_year=source_manifest.tile_acquisition_by_year,
             assets=[],
             source_manifest=str(config.dataset_manifest),
             mode=config.mode,
@@ -992,6 +1014,7 @@ def run(config: RenderConfig) -> tuple[int, Path]:
         years_excluded_with_reason=source_manifest.years_excluded_with_reason,
         common_tile_ids=source_manifest.common_tile_ids,
         tile_sources_by_year=source_manifest.tile_sources_by_year,
+        tile_acquisition_by_year=source_manifest.tile_acquisition_by_year,
         assets=rendered_assets,
         source_manifest=str(config.dataset_manifest),
         mode=config.mode,

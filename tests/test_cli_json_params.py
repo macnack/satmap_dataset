@@ -49,7 +49,7 @@ def test_download_json_center_mode_converts_to_bbox(monkeypatch, tmp_path: Path)
         return 0, config.output_json
 
     monkeypatch.setattr(cli.downloader, "run", fake_run)
-    monkeypatch.setattr(cli, "_bbox_from_center_latlon", lambda lat, lon, square_km: "1,2,3,4")
+    monkeypatch.setattr(cli, "_bbox_from_center_latlon", lambda lat, lon, square_km, **kwargs: "1,2,3,4")
 
     params = {
         "index_manifest": str(tmp_path / "index_manifest.json"),
@@ -81,7 +81,7 @@ def test_index_json_supports_area_km2_alias(monkeypatch, tmp_path: Path) -> None
         return 0, config.output_json
 
     monkeypatch.setattr(cli.index_builder, "run", fake_run)
-    monkeypatch.setattr(cli, "_bbox_from_center_latlon", lambda lat, lon, square_km: "10,20,30,40")
+    monkeypatch.setattr(cli, "_bbox_from_center_latlon", lambda lat, lon, square_km, **kwargs: "10,20,30,40")
 
     params = {
         "year_start": 2015,
@@ -112,7 +112,7 @@ def test_run_location_json_uses_base_and_generates_paths(monkeypatch, tmp_path: 
         return 0, config.artifacts_dir / "validation_report.json"
 
     monkeypatch.setattr(cli.run_all, "run", fake_run)
-    monkeypatch.setattr(cli, "_bbox_from_center_latlon", lambda lat, lon, square_km: "100,200,300,400")
+    monkeypatch.setattr(cli, "_bbox_from_center_latlon", lambda lat, lon, square_km, **kwargs: "100,200,300,400")
 
     base = {
         "year_start": 2015,
@@ -199,7 +199,7 @@ def test_run_all_location_json_runs_each_file(monkeypatch, tmp_path: Path) -> No
         return 0, config.artifacts_dir / "validation_report.json"
 
     monkeypatch.setattr(cli.run_all, "run", fake_run)
-    monkeypatch.setattr(cli, "_bbox_from_center_latlon", lambda lat, lon, square_km: "100,200,300,400")
+    monkeypatch.setattr(cli, "_bbox_from_center_latlon", lambda lat, lon, square_km, **kwargs: "100,200,300,400")
 
     base = {
         "year_start": 2015,
@@ -259,7 +259,7 @@ def test_run_all_location_json_skips_when_validation_artifact_exists(monkeypatch
         return 0, config.artifacts_dir / "validation_report.json"
 
     monkeypatch.setattr(cli.run_all, "run", fake_run)
-    monkeypatch.setattr(cli, "_bbox_from_center_latlon", lambda lat, lon, square_km: "100,200,300,400")
+    monkeypatch.setattr(cli, "_bbox_from_center_latlon", lambda lat, lon, square_km, **kwargs: "100,200,300,400")
 
     base = {
         "year_start": 2015,
@@ -316,7 +316,7 @@ def test_index_all_location_json_runs_each_file(monkeypatch, tmp_path: Path) -> 
         return 0, Path(config.output_json)
 
     monkeypatch.setattr(cli.index_builder, "run", fake_run)
-    monkeypatch.setattr(cli, "_bbox_from_center_latlon", lambda lat, lon, square_km: "100,200,300,400")
+    monkeypatch.setattr(cli, "_bbox_from_center_latlon", lambda lat, lon, square_km, **kwargs: "100,200,300,400")
 
     base = {
         "year_start": 2015,
@@ -354,7 +354,7 @@ def test_download_all_location_json_runs_each_file(monkeypatch, tmp_path: Path) 
         return 0, Path(config.output_json)
 
     monkeypatch.setattr(cli.downloader, "run", fake_run)
-    monkeypatch.setattr(cli, "_bbox_from_center_latlon", lambda lat, lon, square_km: "100,200,300,400")
+    monkeypatch.setattr(cli, "_bbox_from_center_latlon", lambda lat, lon, square_km, **kwargs: "100,200,300,400")
 
     base = {
         "mode": "hybrid",

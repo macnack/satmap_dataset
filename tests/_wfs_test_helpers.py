@@ -56,3 +56,20 @@ def mock_tiles_by_year_2015_2026() -> dict[int, dict[str, str]]:
         else:
             out[year] = {}
     return out
+
+
+def mock_tile_bboxes_by_year_2015_2026() -> dict[int, dict[str, list[float]]]:
+    return {year: {} for year in range(2015, 2027)}
+
+
+def mock_tile_acquisition_by_year_2015_2026() -> dict[int, dict[str, dict[str, int | str | None]]]:
+    return {year: {} for year in range(2015, 2027)}
+
+
+def mock_probe_result_2015_2026():
+    return (
+        mock_statuses_2015_2026(),
+        mock_tiles_by_year_2015_2026(),
+        mock_tile_bboxes_by_year_2015_2026(),
+        mock_tile_acquisition_by_year_2015_2026(),
+    )

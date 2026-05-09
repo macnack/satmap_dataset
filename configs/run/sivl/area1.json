@@ -1,0 +1,17 @@
+{
+  "location_name": "sivl_area1",
+  "center_lat": 60.1668,
+  "center_lon": 24.3343,
+  "width_meters": 4800,
+  "height_meters": 2987,
+  "expected_gsd_meters": 1.0,
+  "expected_years": [
+    2011,
+    2015,
+    2018
+  ],
+  "year_start": 2011,
+  "year_end": 2018,
+  "country": "Finland",
+  "notes": "SIVL benchmark area. Pipeline cannot fetch this yet \u2014 see configs/run/sivl/README.md."
+}

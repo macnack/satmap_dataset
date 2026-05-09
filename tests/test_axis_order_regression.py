@@ -26,7 +26,9 @@ def test_index_swaps_bbox_axis_order_when_legacy_swap_flag_is_set(monkeypatch, t
             )
         ]
         tiles = {2023: {"TILE_1": "https://example.com/TILE_1.tif"}}
-        return statuses, tiles
+        bboxes: dict[int, dict[str, list[float]]] = {2023: {}}
+        acquisition: dict[int, dict[str, dict[str, int | str | None]]] = {2023: {}}
+        return statuses, tiles, bboxes, acquisition
 
     monkeypatch.setattr(index_builder, "probe_years_wfs_with_tiles", fake_probe)
 
