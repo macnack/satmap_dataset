@@ -30,6 +30,7 @@ def run(config: MosaicConfig) -> tuple[int, Path]:
         years_excluded_with_reason=source_manifest.years_excluded_with_reason,
         common_tile_ids=source_manifest.common_tile_ids,
         tile_sources_by_year=source_manifest.tile_sources_by_year,
+        tile_acquisition_by_year=source_manifest.tile_acquisition_by_year,
         assets=assets,
         source_manifest=str(config.dataset_manifest),
         target_width=30000,

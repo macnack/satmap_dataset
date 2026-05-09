@@ -762,6 +762,7 @@ def run(config: DownloadConfig) -> tuple[int, Path]:
         common_tile_ids=index_manifest.common_tile_ids,
         tile_sources_by_year=index_manifest.tile_sources_by_year,
         tile_bboxes_by_year=index_manifest.tile_bboxes_by_year,
+        tile_acquisition_by_year=index_manifest.tile_acquisition_by_year,
         assets=assets,
         source_manifest=str(config.index_manifest),
         mode=config.mode,
