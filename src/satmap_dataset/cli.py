@@ -1320,7 +1320,8 @@ def nls_run_json(config_json: Path = typer.Argument(..., exists=True)) -> None:
     if exit_code != 0:
         _finish(exit_code, index_artifact)
     download_payload = {k: v for k, v in payload.items() if k in DownloadConfig.model_fields}
-    download_payload.setdefault("index_manifest", str(index_artifact))
+    download_payload["index_manifest"] = str(index_artifact)
+    download_payload["output_json"] = str(index_artifact.parent / "dataset_manifest_download.json")
     download_payload.setdefault("provider", "nls")
     download_payload.setdefault("provider_options", payload.get("provider_options", {}))
     download_payload.setdefault("bbox", payload.get("bbox"))

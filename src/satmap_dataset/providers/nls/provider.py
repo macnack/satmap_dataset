@@ -16,7 +16,7 @@ from satmap_dataset.models import (
     YearStatus,
 )
 from satmap_dataset.pipeline.validator import evaluate_year_policy
-from satmap_dataset.providers.nls.auth import basic_auth_header, resolve_api_key
+from satmap_dataset.providers.nls.auth import resolve_api_key
 from satmap_dataset.providers.nls.wcs import (
     DEFAULT_COVERAGE_ID,
     DEFAULT_WCS_URL,
@@ -59,6 +59,16 @@ def _check_aoi_cap(bbox: tuple[float, float, float, float]) -> str | None:
     return None
 
 
+def _with_api_key(url: str, api_key: str) -> str:
+    """Append api-key to a URL that already has a query string.
+
+    httpx's `params=` argument replaces the existing query string instead of
+    merging when the URL already contains one, so we splice manually.
+    """
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}api-key={api_key}"
+
+
 def _fetch_describe_coverage_xml(
     *,
     base_url: str,
@@ -67,9 +77,9 @@ def _fetch_describe_coverage_xml(
     timeout: float = 60.0,
 ) -> bytes:
     url = build_describe_coverage_url(base_url, coverage_id=coverage_id)
-    headers = {"Authorization": basic_auth_header(api_key), "User-Agent": "satmap_dataset/0.1"}
+    headers = {"User-Agent": "satmap_dataset/0.1"}
     with httpx.Client(timeout=timeout, headers=headers) as client:
-        response = client.get(url)
+        response = client.get(_with_api_key(url, api_key))
         response.raise_for_status()
         return response.content
 
@@ -84,11 +94,13 @@ async def _download_one(
     output_path: Path,
     *,
     retries: int,
+    api_key: str | None = None,
 ) -> bool:
     attempts = max(1, retries + 1)
+    request_url = _with_api_key(url, api_key) if api_key else url
     for attempt in range(1, attempts + 1):
         try:
-            async with client.stream("GET", url) as response:
+            async with client.stream("GET", request_url) as response:
                 response.raise_for_status()
                 async with aiofiles.open(output_path, "wb") as fp:
                     async for chunk in response.aiter_bytes():
@@ -274,10 +286,7 @@ class NlsProvider:
         )
         options = dict(config.provider_options)
         api_key = resolve_api_key(options, secret_path=Path(".secret"))
-        headers = {
-            "Authorization": basic_auth_header(api_key),
-            "User-Agent": "satmap_dataset/0.1",
-        }
+        headers = {"User-Agent": "satmap_dataset/0.1"}
 
         timeout = httpx.Timeout(timeout=config.timeout, connect=min(config.timeout, 20.0))
         limits = httpx.Limits(
@@ -303,7 +312,9 @@ class NlsProvider:
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 ok = output_path.exists() and output_path.stat().st_size > 0 and not config.overwrite
                 if not ok:
-                    ok = await _download_one(client, url, output_path, retries=config.retries)
+                    ok = await _download_one(
+                        client, url, output_path, retries=config.retries, api_key=api_key
+                    )
                 if ok:
                     assets.append(str(output_path))
                     years_source_map[year] = "wcs"

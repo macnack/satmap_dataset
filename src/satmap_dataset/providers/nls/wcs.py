@@ -63,11 +63,17 @@ def _fmt(value: float) -> str:
     return f"{value:.6f}".rstrip("0").rstrip(".")
 
 
-_TIME_PATTERN = re.compile(r'"(\d{4})-\d{2}-\d{2}T')
+_YEAR_PATTERN = re.compile(r"^(\d{4})-\d{2}-\d{2}T")
 
 
 def parse_describe_coverage_years(xml_bytes: bytes) -> list[int]:
-    """Extract the years advertised by the WCS coverage's time axis."""
+    """Extract the years advertised by the WCS coverage's time axis.
+
+    NLS Finland's GeoServer-backed WCS exposes the temporal axis as a
+    sequence of `<gml:TimeInstant><gml:timePosition>YYYY-MM-DDT...` entries
+    nested under `<wstxns1:TimeDomain>` inside `<gmlcov:metadata>`. We scan
+    every `timePosition` element regardless of namespace prefix.
+    """
     try:
         root = ET.fromstring(xml_bytes)
     except ET.ParseError:
@@ -75,9 +81,10 @@ def parse_describe_coverage_years(xml_bytes: bytes) -> list[int]:
     years: set[int] = set()
     for element in root.iter():
         local = element.tag.split("}", 1)[-1]
-        if local != "coefficients":
+        if local != "timePosition":
             continue
-        text = element.text or ""
-        for match in _TIME_PATTERN.finditer(text):
+        text = (element.text or "").strip()
+        match = _YEAR_PATTERN.match(text)
+        if match:
             years.add(int(match.group(1)))
     return sorted(years)

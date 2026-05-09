@@ -41,8 +41,8 @@ def test_index_writes_manifest_with_one_url_per_year(monkeypatch, tmp_path):
     assert manifest_path == cfg.output_json
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert data["provider"] == "nls"
-    # available years from fixture intersected with [2018..2022]: 2018, 2020, 2022
-    assert data["years_included"] == [2018, 2020, 2022]
+    # Real NLS catalogue covers 2018..2022 contiguously.
+    assert data["years_included"] == [2018, 2019, 2020, 2021, 2022]
     for year in data["years_included"]:
         sources = data["tile_sources_by_year"][str(year)]
         assert list(sources.keys()) == [f"nls_{year}"]
