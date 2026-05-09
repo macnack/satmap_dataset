@@ -199,6 +199,97 @@ def _resolve_target_dimensions(config: RenderConfig, target_bbox: BBox) -> tuple
     return _compute_reference_dimensions(target_bbox, config.px_per_meter)
 
 
+def _read_source_epsg(path: Path) -> int | None:
+    """Return the projected EPSG code embedded in `path`, or None if absent."""
+    try:
+        with tifffile.TiffFile(path) as tif:
+            return _extract_epsg_from_geokey(tif.pages[0])
+    except Exception:
+        return None
+
+
+def _gdalwarp_path() -> str | None:
+    return shutil.which("gdalwarp")
+
+
+def _reproject_asset_to_target_crs(
+    src_path: Path,
+    *,
+    target_srs: str,
+    resample_method: str,
+) -> Path:
+    """Ensure `src_path` is in `target_srs`. Reproject via gdalwarp if not.
+
+    Reprojected tiles are cached next to the source file under
+    ``_reprojected/`` so subsequent renders skip the reprojection.
+    """
+    target_epsg = _epsg_code_from_srs(target_srs)
+    if target_epsg is None:
+        return src_path
+    src_epsg = _read_source_epsg(src_path)
+    if src_epsg is None or src_epsg == target_epsg:
+        return src_path
+
+    cache_dir = src_path.parent / "_reprojected"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cached = cache_dir / f"{src_path.stem}__epsg{target_epsg}.tif"
+    if cached.exists() and cached.stat().st_size > 0:
+        return cached
+
+    gdalwarp = _gdalwarp_path()
+    if gdalwarp is None:
+        raise RuntimeError(
+            f"Source asset {src_path} is in EPSG:{src_epsg} but render target is "
+            f"EPSG:{target_epsg}. Install GDAL (provides gdalwarp) or set the "
+            "target_srs to match the source CRS."
+        )
+
+    resampling = "bilinear" if resample_method == "bilinear" else "near"
+    cmd = [
+        gdalwarp,
+        "-t_srs", f"EPSG:{target_epsg}",
+        "-r", resampling,
+        "-of", "GTiff",
+        "-co", "COMPRESS=DEFLATE",
+        "-co", "TILED=YES",
+        "-co", "BIGTIFF=IF_SAFER",
+        "-q",
+        "-overwrite",
+        str(src_path),
+        str(cached),
+    ]
+    logger.info(
+        "Render: reprojecting %s from EPSG:%s to EPSG:%s -> %s",
+        src_path.name, src_epsg, target_epsg, cached,
+    )
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"gdalwarp failed reprojecting {src_path} to EPSG:{target_epsg}: "
+            f"{exc.stderr.strip() if exc.stderr else exc}"
+        ) from exc
+    return cached
+
+
+def _reproject_grouped_assets_to_target_crs(
+    grouped_assets: dict[int, list[Path]],
+    *,
+    target_srs: str,
+    resample_method: str,
+) -> dict[int, list[Path]]:
+    """Run `_reproject_asset_to_target_crs` over every asset in every year."""
+    reprojected: dict[int, list[Path]] = {}
+    for year, paths in grouped_assets.items():
+        reprojected[year] = [
+            _reproject_asset_to_target_crs(
+                p, target_srs=target_srs, resample_method=resample_method
+            )
+            for p in paths
+        ]
+    return reprojected
+
+
 def _read_georef(path: Path) -> GeoRef:
     with tifffile.TiffFile(path) as tif:
         page = tif.pages[0]
@@ -867,6 +958,11 @@ def run(config: RenderConfig) -> tuple[int, Path]:
 
     target_bbox = _resolve_target_bbox(config, source_manifest, config.dataset_manifest)
     grouped_assets = _group_assets_by_year(source_manifest.assets, config.dataset_manifest)
+    grouped_assets = _reproject_grouped_assets_to_target_crs(
+        grouped_assets,
+        target_srs=config.target_srs,
+        resample_method=config.resample_method,
+    )
     target_width, target_height = _resolve_target_dimensions(config, target_bbox)
     years_source_map = dict(source_manifest.years_source_map)
     inferred_source_axis_mode = _infer_global_wfs_axis_mode(
