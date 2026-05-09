@@ -1276,6 +1276,64 @@ def validate_all_location_json_command(
     raise typer.Exit(code=0)
 
 
+@app.command("nls-index-json")
+def nls_index_json(config_json: Path = typer.Argument(..., exists=True)) -> None:
+    from satmap_dataset.providers.nls import NlsProvider
+
+    payload = json.loads(config_json.read_text(encoding="utf-8"))
+    try:
+        cfg = IndexConfig(**payload)
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+    exit_code, artifact = NlsProvider().index(cfg)
+    _finish(exit_code, artifact)
+
+
+@app.command("nls-download-json")
+def nls_download_json(config_json: Path = typer.Argument(..., exists=True)) -> None:
+    from satmap_dataset.providers.nls import NlsProvider
+
+    payload = json.loads(config_json.read_text(encoding="utf-8"))
+    try:
+        cfg = DownloadConfig(**payload)
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+    exit_code, artifact = NlsProvider().download(cfg)
+    _finish(exit_code, artifact)
+
+
+@app.command("nls-run-json")
+def nls_run_json(config_json: Path = typer.Argument(..., exists=True)) -> None:
+    """Single-shot NLS index + download from one JSON config."""
+    from satmap_dataset.providers.nls import NlsProvider
+
+    payload = json.loads(config_json.read_text(encoding="utf-8"))
+    try:
+        index_cfg = IndexConfig(**{k: v for k, v in payload.items() if k in IndexConfig.model_fields})
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+    provider = NlsProvider()
+    exit_code, index_artifact = provider.index(index_cfg)
+    if exit_code != 0:
+        _finish(exit_code, index_artifact)
+    download_payload = {k: v for k, v in payload.items() if k in DownloadConfig.model_fields}
+    download_payload.setdefault("index_manifest", str(index_artifact))
+    download_payload.setdefault("provider", "nls")
+    download_payload.setdefault("provider_options", payload.get("provider_options", {}))
+    download_payload.setdefault("bbox", payload.get("bbox"))
+    download_payload.setdefault("srs", payload.get("srs", "EPSG:3067"))
+    try:
+        download_cfg = DownloadConfig(**download_payload)
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+    exit_code, artifact = provider.download(download_cfg)
+    _finish(exit_code, artifact)
+
+
 def main() -> None:
     configure_logging("INFO")
     app()
