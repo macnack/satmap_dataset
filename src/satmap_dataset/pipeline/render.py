@@ -64,6 +64,17 @@ def _epsg_code(srs: str) -> int | None:
         return None
 
 
+def _needs_bigtiff(width: int, height: int, channels: int = 3) -> bool:
+    """Return True only if the uncompressed RGB image would push past classic TIFF's 4 GB limit.
+
+    BigTIFF is needed for files >4 GB but breaks viewers that only speak
+    classic TIFF. Outputs that fit comfortably under 4 GB raw should use
+    classic TIFF for maximum tooling compatibility.
+    """
+    raw_bytes = int(width) * int(height) * int(channels)
+    return raw_bytes > 3_500_000_000  # 3.5 GB safety margin
+
+
 @dataclass(frozen=True)
 class GeoRef:
     origin_x: float
@@ -597,7 +608,9 @@ def _apply_geotiff_tags_tifffile(
         temp_path.unlink()
 
     try:
-        with tifffile.TiffFile(out_path) as src, tifffile.TiffWriter(temp_path, bigtiff=True) as dst:
+        with tifffile.TiffFile(out_path) as src, tifffile.TiffWriter(
+            temp_path, bigtiff=_needs_bigtiff(target_width, target_height)
+        ) as dst:
             for idx, page in enumerate(src.pages):
                 data = page.asarray()
                 tile_w_tag = page.tags.get("TileWidth")
@@ -740,7 +753,7 @@ def _render_year(
         "tile_width": tile_size,
         "tile_height": tile_size,
         "pyramid": True,
-        "bigtiff": True,
+        "bigtiff": _needs_bigtiff(target_width, target_height),
     }
     if compression_mode == "deflate":
         tiffsave_kwargs["compression"] = "deflate"
@@ -794,7 +807,7 @@ def _render_reference_wms_year(
         tile_height=512,
         compression="deflate",
         pyramid=True,
-        bigtiff=True,
+        bigtiff=_needs_bigtiff(target_width, target_height),
         predictor="horizontal",
     )
 
