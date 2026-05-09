@@ -68,7 +68,7 @@ class DatasetManifest(BaseModel):
     target_srs: str | None = None
     profile: Literal["train", "reference"] | None = None
     px_per_meter: float | None = None
-    years_source_map: dict[int, Literal["wfs", "wms", "wms_fallback"]] = Field(default_factory=dict)
+    years_source_map: dict[int, Literal["wfs", "wms", "wms_fallback", "wcs"]] = Field(default_factory=dict)
     forced_wms_years: list[int] = Field(default_factory=list)
     color_qc_by_year: dict[int, dict[str, float | list[float] | None]] = Field(default_factory=dict)
     resample_method: str | None = None
