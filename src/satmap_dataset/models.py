@@ -20,6 +20,8 @@ class YearStatus(BaseModel):
 
 class IndexManifest(BaseModel):
     kind: Literal["index_manifest"] = "index_manifest"
+    provider: Literal["geoportal", "nls"] = "geoportal"
+    provider_metadata: dict[str, Any] = Field(default_factory=dict)
     generated_at: datetime = Field(default_factory=_utc_now)
     year_start: int
     year_end: int
@@ -46,6 +48,8 @@ class IndexManifest(BaseModel):
 
 class DatasetManifest(BaseModel):
     kind: Literal["dataset_manifest"] = "dataset_manifest"
+    provider: Literal["geoportal", "nls"] = "geoportal"
+    provider_metadata: dict[str, Any] = Field(default_factory=dict)
     stage: Literal["download", "mosaic", "render", "run"] = "download"
     generated_at: datetime = Field(default_factory=_utc_now)
     years_requested: list[int] = Field(default_factory=list)
@@ -57,7 +61,7 @@ class DatasetManifest(BaseModel):
     tile_bboxes_by_year: dict[int, dict[str, list[float]]] = Field(default_factory=dict)
     assets: list[str] = Field(default_factory=list)
     source_manifest: str | None = None
-    mode: Literal["wms_tiled", "wfs_render", "hybrid"] = "hybrid"
+    mode: Literal["wms_tiled", "wfs_render", "hybrid", "wcs"] = "hybrid"
     target_width: int | None = None
     target_height: int | None = None
     target_bbox: str | None = None

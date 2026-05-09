@@ -167,3 +167,32 @@ def test_render_config_accepts_jpeg95_compression() -> None:
         compression="jpeg95",
     )
     assert config.compression == "jpeg95"
+
+
+def test_index_manifest_default_provider_is_geoportal() -> None:
+    m = IndexManifest(
+        year_start=2020,
+        year_end=2020,
+        bbox="0,0,1,1",
+        srs="EPSG:2180",
+        years_requested=[2020],
+        year_statuses=[],
+        years_available_wfs=[],
+        years_included=[],
+        passed=True,
+    )
+    assert m.provider == "geoportal"
+    assert m.provider_metadata == {}
+
+
+def test_dataset_manifest_accepts_nls_provider_and_wcs_mode() -> None:
+    m = DatasetManifest(provider="nls", mode="wcs")
+    assert m.provider == "nls"
+    assert m.mode == "wcs"
+
+
+def test_dataset_manifest_rejects_unknown_provider() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        DatasetManifest(provider="unknown")
