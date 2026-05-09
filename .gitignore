@@ -43,3 +43,8 @@ htmlcov/
 
 # Local artifacts
 artifacts/
+
+# Secrets — never commit. Use .secret.template as the shape; copy to .secret
+# locally and `direnv allow` to load via dotenv_if_exists in .envrc.
+.secret
+.env
