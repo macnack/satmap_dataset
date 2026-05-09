@@ -213,19 +213,33 @@ def _validate_sidecars(asset_path: Path, target_srs: str) -> list[str]:
                 errors.append(f"World file contains non-numeric values for {asset_path.name}")
 
     expected_srs = target_srs.upper()
-    expected_codes = {"EPSG:2180": ("2180", ("CS92",)), "EPSG:3006": ("3006", ("SWEREF99 TM",))}
-    if expected_srs in expected_codes:
-        code, fallback_markers = expected_codes[expected_srs]
+    fallback_markers_by_srs = {"EPSG:2180": ("CS92",), "EPSG:3006": ("SWEREF99 TM",)}
+    expected_code: str | None = None
+    if expected_srs.startswith("EPSG:"):
+        expected_code = expected_srs.split(":", 1)[1]
+    is_known = expected_srs in fallback_markers_by_srs or _is_utm_epsg(expected_srs)
+    if is_known and expected_code is not None:
         if not prj.exists():
             errors.append(f"Missing projection file for {asset_path.name}: {prj.name}")
         else:
             prj_text = prj.read_text(encoding="ascii", errors="ignore")
-            marker_in_authority = f'EPSG","{code}'
-            if marker_in_authority not in prj_text and not any(m in prj_text for m in fallback_markers):
+            marker_in_authority = f'EPSG","{expected_code}'
+            extra_markers = fallback_markers_by_srs.get(expected_srs, ())
+            if marker_in_authority not in prj_text and not any(m in prj_text for m in extra_markers):
                 errors.append(
                     f"Projection file does not indicate {expected_srs} for {asset_path.name}"
                 )
     return errors
+
+
+def _is_utm_epsg(srs: str) -> bool:
+    if not srs.startswith("EPSG:"):
+        return False
+    try:
+        code = int(srs.split(":", 1)[1])
+    except ValueError:
+        return False
+    return 32601 <= code <= 32660 or 32701 <= code <= 32760
 
 
 def run(config: ValidateConfig) -> tuple[int, Path]:
@@ -296,6 +310,11 @@ def run(config: ValidateConfig) -> tuple[int, Path]:
             georef_bbox, epsg = _read_georef_bbox_and_epsg(asset_path)
             expected_epsg_by_srs = {"EPSG:2180": 2180, "EPSG:3006": 3006}
             expected_epsg = expected_epsg_by_srs.get(target_srs)
+            if expected_epsg is None and _is_utm_epsg(target_srs):
+                try:
+                    expected_epsg = int(target_srs.split(":", 1)[1])
+                except ValueError:
+                    expected_epsg = None
             if expected_epsg is not None and epsg != expected_epsg:
                 report.errors.append(
                     f"Invalid GeoTIFF EPSG for {asset}: {epsg} expected {expected_epsg}"
