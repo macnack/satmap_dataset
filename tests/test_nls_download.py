@@ -71,6 +71,51 @@ def test_download_writes_one_geotiff_per_year(monkeypatch, tmp_path):
         assert out.read_bytes() == b"FAKE_TIFF_BYTES"
 
 
+def test_download_drops_empty_no_data_tiles(monkeypatch, tmp_path):
+    """Empty WCS tiles (all zeros, ~196 KB) get dropped from the manifest and disk."""
+    import numpy as np
+    import tifffile
+
+    index_path = _write_index_manifest(tmp_path, [2011, 2013])
+    cfg = DownloadConfig(
+        index_manifest=index_path,
+        download_root=tmp_path / "downloads",
+        provider="nls",
+        provider_options={"api_key": "test-key"},
+        bbox="385000,6675000,387000,6677000",
+        srs="EPSG:3067",
+        output_json=tmp_path / "dataset_manifest_download.json",
+    )
+
+    empty_tile = tmp_path / "empty.tif"
+    real_tile = tmp_path / "real.tif"
+    tifffile.imwrite(empty_tile, np.zeros((64, 64, 3), dtype=np.uint8), photometric="rgb")
+    tifffile.imwrite(real_tile, np.full((64, 64, 3), 128, dtype=np.uint8), photometric="rgb")
+    empty_bytes = empty_tile.read_bytes()
+    real_bytes = real_tile.read_bytes()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "2011" in str(request.url):
+            return httpx.Response(200, content=empty_bytes)
+        return httpx.Response(200, content=real_bytes)
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        "satmap_dataset.providers.nls.provider._make_async_client",
+        lambda **kw: httpx.AsyncClient(transport=transport, **kw),
+    )
+
+    exit_code, manifest_path = NlsProvider().download(cfg)
+    assert exit_code == 0
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert data["years_included"] == [2013]
+    assert data["years_excluded_with_reason"]["2011"] == "wcs_returned_empty_tile"
+    assert data["provider_metadata"]["empty_years"] == [2011]
+    # The empty tile must not remain on disk.
+    assert not (cfg.download_root / "2011" / "nls_2011.tif").exists()
+    assert (cfg.download_root / "2013" / "nls_2013.tif").is_file()
+
+
 def test_download_marks_failed_on_http_error(monkeypatch, tmp_path):
     index_path = _write_index_manifest(tmp_path, [2018])
     cfg = DownloadConfig(

@@ -88,6 +88,35 @@ def _make_async_client(**kwargs: Any) -> httpx.AsyncClient:
     return httpx.AsyncClient(**kwargs)
 
 
+# NLS WCS returns ~196 KB no-data tiles when an AOI lies outside that year's
+# orthophoto coverage. Real tiles for our 2 km AOI are 40-50 MB. Anything
+# below this threshold is checked with tifffile to confirm it's all-zero.
+_EMPTY_TILE_SIZE_HINT_BYTES = 1_000_000
+
+
+def _is_empty_tile(path: Path) -> bool:
+    """Detect WCS no-data tiles (all bands all zero).
+
+    Skips files that are clearly large enough to contain real imagery
+    (the size hint), and only opens tifffile on the borderline ones.
+    Errors during inspection conservatively return False so a real tile
+    is never dropped on a parser hiccup.
+    """
+    try:
+        if path.stat().st_size > _EMPTY_TILE_SIZE_HINT_BYTES:
+            return False
+    except OSError:
+        return False
+    try:
+        import tifffile
+
+        with tifffile.TiffFile(path) as tif:
+            data = tif.pages[0].asarray()
+        return bool(data.size > 0 and int(data.max()) == 0)
+    except Exception:
+        return False
+
+
 async def _download_one(
     client: httpx.AsyncClient,
     url: str,
@@ -296,6 +325,7 @@ class NlsProvider:
 
         assets: list[str] = []
         failed: list[str] = []
+        empty_years: list[int] = []
         years_source_map: dict[int, str] = {}
         years_included_effective: list[int] = []
 
@@ -315,12 +345,26 @@ class NlsProvider:
                     ok = await _download_one(
                         client, url, output_path, retries=config.retries, api_key=api_key
                     )
-                if ok:
-                    assets.append(str(output_path))
-                    years_source_map[year] = "wcs"
-                    years_included_effective.append(year)
-                else:
+                if not ok:
                     failed.append(url)
+                    continue
+                if _is_empty_tile(output_path):
+                    logger.info("NLS download: year=%s returned no-data tile, dropping", year)
+                    try:
+                        output_path.unlink()
+                        # Remove the now-empty year directory; ignore if not empty.
+                        output_path.parent.rmdir()
+                    except OSError:
+                        pass
+                    empty_years.append(year)
+                    continue
+                assets.append(str(output_path))
+                years_source_map[year] = "wcs"
+                years_included_effective.append(year)
+
+        years_excluded = dict(index_manifest.years_excluded_with_reason)
+        for year in empty_years:
+            years_excluded[year] = "wcs_returned_empty_tile"
 
         manifest = DatasetManifest(
             provider="nls",
@@ -329,7 +373,7 @@ class NlsProvider:
             years_requested=index_manifest.years_requested,
             years_available_wfs=index_manifest.years_available_wfs,
             years_included=sorted(years_included_effective),
-            years_excluded_with_reason=index_manifest.years_excluded_with_reason,
+            years_excluded_with_reason=years_excluded,
             common_tile_ids=index_manifest.common_tile_ids,
             tile_sources_by_year=index_manifest.tile_sources_by_year,
             tile_bboxes_by_year=index_manifest.tile_bboxes_by_year,
@@ -342,9 +386,12 @@ class NlsProvider:
             years_source_map=years_source_map,
             forced_wms_years=[],
             passed=bool(assets) and not failed,
-            notes=f"provider=nls downloaded={len(assets)} failed={len(failed)}",
+            notes=(
+                f"provider=nls downloaded={len(assets)} failed={len(failed)} "
+                f"empty={len(empty_years)}"
+            ),
             run_parameters=config.model_dump(mode="json"),
-            provider_metadata={"failed_urls": failed},
+            provider_metadata={"failed_urls": failed, "empty_years": sorted(empty_years)},
         )
         config.output_json.parent.mkdir(parents=True, exist_ok=True)
         config.output_json.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
