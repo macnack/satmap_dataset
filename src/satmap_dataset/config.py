@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 PROVIDER_GEOPORTAL = "geoportal"
 PROVIDER_LANTMATERIET = "lantmateriet"
-ALLOWED_PROVIDERS = {PROVIDER_GEOPORTAL, PROVIDER_LANTMATERIET}
+PROVIDER_SENTINEL2 = "sentinel2"
+ALLOWED_PROVIDERS = {PROVIDER_GEOPORTAL, PROVIDER_LANTMATERIET, PROVIDER_SENTINEL2}
 
 
 def _validate_bbox(value: str) -> str:

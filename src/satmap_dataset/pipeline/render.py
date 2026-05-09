@@ -585,7 +585,7 @@ def _apply_geotiff_tags_tifffile(
     srs: str,
 ) -> bool:
     epsg_code = _epsg_code_from_srs(srs)
-    if epsg_code is None or epsg_code not in _PROJ_WKT_BY_EPSG:
+    if epsg_code is None:
         raise ValueError(f"Unsupported SRS for GeoTIFF tagging: {srs}")
 
     pixel_size_x, pixel_size_y = _pixel_size_from_bbox(target_bbox, target_width, target_height)

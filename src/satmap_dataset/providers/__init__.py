@@ -14,4 +14,10 @@ def get_provider(name: str) -> Provider:
         from satmap_dataset.providers.lantmateriet import LantmaterietProvider
 
         return LantmaterietProvider()
-    raise ValueError(f"Unknown provider: {name!r}. Expected 'geoportal' or 'lantmateriet'.")
+    if name == "sentinel2":
+        from satmap_dataset.providers.sentinel2 import Sentinel2Provider
+
+        return Sentinel2Provider()
+    raise ValueError(
+        f"Unknown provider: {name!r}. Expected 'geoportal', 'lantmateriet', or 'sentinel2'."
+    )

@@ -52,6 +52,7 @@ class StacItem:
     license: str | None
     attribution: str | None
     spectral_type: str | None
+    cloud_cover: float | None
     assets: tuple[StacAsset, ...]
 
 
@@ -186,6 +187,7 @@ def parse_stac_item(payload: dict[str, Any]) -> StacItem:
         license=_to_str(properties.get("license")),
         attribution=_to_str(properties.get("attribution") or properties.get("license_attribution")),
         spectral_type=_extract_spectral_type(properties),
+        cloud_cover=_to_float(properties.get("eo:cloud_cover")),
         assets=_coerce_assets(assets),
     )
 
@@ -318,10 +320,13 @@ async def search_features(
     timeout: float = 60.0,
     retry_policy: RetryPolicy | None = None,
     client: httpx.AsyncClient | None = None,
+    extra_body: dict[str, Any] | None = None,
 ) -> list[StacItem]:
     """POST /search against a STAC API and return parsed items.
 
-    Pages through links[rel="next"] up to options.max_pages.
+    Pages through links[rel="next"] up to options.max_pages. `extra_body`
+    is shallow-merged into the POST body — useful for STAC `query`
+    extensions (e.g. ``{"query": {"eo:cloud_cover": {"lt": 20}}}``).
     """
     body: dict[str, Any] = {"limit": options.page_limit}
     if options.collections:
@@ -332,6 +337,9 @@ async def search_features(
             body["bbox-crs"] = bbox_crs
     if datetime_range:
         body["datetime"] = datetime_range
+    if extra_body:
+        for key, value in extra_body.items():
+            body[key] = value
 
     headers = {"Content-Type": "application/json", "Accept": "application/geo+json"}
     if options.api_key:
