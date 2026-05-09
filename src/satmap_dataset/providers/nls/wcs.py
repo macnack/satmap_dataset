@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import xml.etree.ElementTree as ET
 from urllib.parse import urlencode
 
 
@@ -59,3 +61,23 @@ def _fmt(value: float) -> str:
     if float(value).is_integer():
         return str(int(value))
     return f"{value:.6f}".rstrip("0").rstrip(".")
+
+
+_TIME_PATTERN = re.compile(r'"(\d{4})-\d{2}-\d{2}T')
+
+
+def parse_describe_coverage_years(xml_bytes: bytes) -> list[int]:
+    """Extract the years advertised by the WCS coverage's time axis."""
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError:
+        return []
+    years: set[int] = set()
+    for element in root.iter():
+        local = element.tag.split("}", 1)[-1]
+        if local != "coefficients":
+            continue
+        text = element.text or ""
+        for match in _TIME_PATTERN.finditer(text):
+            years.add(int(match.group(1)))
+    return sorted(years)

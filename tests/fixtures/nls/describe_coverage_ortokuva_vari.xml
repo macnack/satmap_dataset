@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wcs:CoverageDescriptions
+    xmlns:wcs="http://www.opengis.net/wcs/2.0"
+    xmlns:gml="http://www.opengis.net/gml/3.2"
+    xmlns:gmlrgrid="http://www.opengis.net/gml/3.3/rgrid">
+  <wcs:CoverageDescription gml:id="ortokuva_vari">
+    <gml:boundedBy>
+      <gml:EnvelopeWithTimePeriod srsName="http://www.opengis.net/def/crs/EPSG/0/3067" axisLabels="E N time" uomLabels="m m d">
+        <gml:lowerCorner>50000 6600000 2008-01-01T00:00:00.000Z</gml:lowerCorner>
+        <gml:upperCorner>770000 7780000 2024-12-31T00:00:00.000Z</gml:upperCorner>
+        <gml:beginPosition>2008-01-01T00:00:00.000Z</gml:beginPosition>
+        <gml:endPosition>2024-12-31T00:00:00.000Z</gml:endPosition>
+      </gml:EnvelopeWithTimePeriod>
+    </gml:boundedBy>
+    <wcs:CoverageId>ortokuva_vari</wcs:CoverageId>
+    <gml:domainSet>
+      <gmlrgrid:ReferenceableGridByVectors gml:id="grid_ortokuva_vari" dimension="3">
+        <gmlrgrid:generalGridAxis>
+          <gmlrgrid:GeneralGridAxis>
+            <gmlrgrid:coefficients>"2008-12-31T00:00:00.000Z" "2010-12-31T00:00:00.000Z" "2012-12-31T00:00:00.000Z" "2014-12-31T00:00:00.000Z" "2016-12-31T00:00:00.000Z" "2018-12-31T00:00:00.000Z" "2020-12-31T00:00:00.000Z" "2022-12-31T00:00:00.000Z" "2024-12-31T00:00:00.000Z"</gmlrgrid:coefficients>
+          </gmlrgrid:GeneralGridAxis>
+        </gmlrgrid:generalGridAxis>
+      </gmlrgrid:ReferenceableGridByVectors>
+    </gml:domainSet>
+  </wcs:CoverageDescription>
+</wcs:CoverageDescriptions>
