@@ -43,3 +43,8 @@ htmlcov/
 
 # Local artifacts
 artifacts/
+
+# Secrets / API keys (NLS Finland, etc.)
+.secret
+.secret.*
+*.secret
