@@ -65,3 +65,36 @@ def test_parse_aoi_years_raises_on_html_error_page():
 def test_parse_aoi_years_raises_when_features_key_missing():
     with pytest.raises(OapifParseError):
         parse_aoi_years(b'{"some": "other shape"}')
+
+
+def test_parse_next_link_returns_geojson_next_when_present():
+    from satmap_dataset.providers.nls.oapif import parse_next_link
+
+    payload = json.dumps(
+        {
+            "type": "FeatureCollection",
+            "features": [],
+            "links": [
+                {"rel": "self", "href": "https://x/items?...", "type": "application/geo+json"},
+                {"rel": "next", "href": "https://x/items?startIndex=1000", "type": "text/html"},
+                {"rel": "next", "href": "https://x/items?startIndex=1000&f=json", "type": "application/geo+json"},
+            ],
+        }
+    ).encode("utf-8")
+    # The geo+json next must win over the text/html next.
+    assert parse_next_link(payload) == "https://x/items?startIndex=1000&f=json"
+
+
+def test_parse_next_link_returns_none_on_last_page():
+    from satmap_dataset.providers.nls.oapif import parse_next_link
+
+    payload = json.dumps(
+        {
+            "type": "FeatureCollection",
+            "features": [],
+            "links": [
+                {"rel": "self", "href": "https://x/items?...", "type": "application/geo+json"},
+            ],
+        }
+    ).encode("utf-8")
+    assert parse_next_link(payload) is None

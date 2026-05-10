@@ -56,14 +56,7 @@ def parse_aoi_years(features_geojson: bytes) -> set[int]:
     look like a FeatureCollection. An empty `features` list is *not* an
     error and returns the empty set.
     """
-    try:
-        data = json.loads(features_geojson)
-    except (ValueError, json.JSONDecodeError) as exc:
-        raise OapifParseError(f"OAPIF response is not valid JSON: {exc}") from exc
-    if not isinstance(data, dict) or "features" not in data:
-        raise OapifParseError(
-            "OAPIF response missing 'features' array (likely an HTML error page or unexpected schema)"
-        )
+    data = _parse_geojson(features_geojson)
     years: set[int] = set()
     for feature in data.get("features", []):
         props = feature.get("properties", {}) or {}
@@ -75,3 +68,37 @@ def parse_aoi_years(features_geojson: bytes) -> set[int]:
         except ValueError:
             continue
     return years
+
+
+def parse_next_link(features_geojson: bytes) -> str | None:
+    """Extract the `rel='next'` link href from an OAPIF FeatureCollection page.
+
+    Returns None when there are no more pages. Raises OapifParseError on
+    malformed payloads (the same fallback path the provider already uses).
+    """
+    data = _parse_geojson(features_geojson)
+    for link in data.get("links", []) or []:
+        if not isinstance(link, dict):
+            continue
+        if (link.get("rel") or "").lower() != "next":
+            continue
+        # Prefer GeoJSON over HTML when both are advertised.
+        link_type = (link.get("type") or "").lower()
+        if link_type and "geo+json" not in link_type and "json" not in link_type:
+            continue
+        href = link.get("href")
+        if isinstance(href, str) and href:
+            return href
+    return None
+
+
+def _parse_geojson(features_geojson: bytes) -> dict:
+    try:
+        data = json.loads(features_geojson)
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise OapifParseError(f"OAPIF response is not valid JSON: {exc}") from exc
+    if not isinstance(data, dict) or "features" not in data:
+        raise OapifParseError(
+            "OAPIF response missing 'features' array (likely an HTML error page or unexpected schema)"
+        )
+    return data

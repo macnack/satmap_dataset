@@ -104,6 +104,60 @@ def test_index_fails_when_no_years_in_range(monkeypatch, tmp_path):
     assert exit_code != 0
 
 
+def test_index_follows_oapif_pagination_to_collect_all_years(monkeypatch, tmp_path):
+    """Year coverage is the union across all paginated OAPIF pages, not just page 1."""
+    monkeypatch.setattr(nls_provider, "_fetch_describe_coverage_xml", lambda **kw: _fixture_xml())
+
+    pages = [
+        # page 1: years 2018, 2020, plus a `next` link
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {"properties": {"kuvausvuosi": "2018"}},
+                    {"properties": {"kuvausvuosi": "2020"}},
+                ],
+                "links": [
+                    {"rel": "next", "href": "https://example.test/page2", "type": "application/geo+json"},
+                ],
+            }
+        ).encode("utf-8"),
+        # page 2: years 2022; no next link
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [{"properties": {"kuvausvuosi": "2022"}}],
+                "links": [],
+            }
+        ).encode("utf-8"),
+    ]
+
+    import httpx
+
+    def handler(request):
+        return httpx.Response(200, content=pages[1])
+
+    transport = httpx.MockTransport(handler)
+    # First page comes from _fetch_oapif_items_geojson; subsequent pages from
+    # the inline httpx.Client inside _fetch_oapif_aoi_years. Patch the first
+    # fetcher to return page 1 and intercept httpx.Client to serve page 2.
+    monkeypatch.setattr(nls_provider, "_fetch_oapif_items_geojson", lambda **kw: pages[0])
+    real_client_init = httpx.Client.__init__
+
+    def patched_init(self, *args, **kwargs):
+        kwargs["transport"] = transport
+        real_client_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.Client, "__init__", patched_init)
+
+    cfg = _config(tmp_path)
+    exit_code, manifest_path = NlsProvider().index(cfg)
+    assert exit_code == 0
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    # Without pagination, only [2018, 2020] would survive; with it 2022 also.
+    assert data["years_included"] == [2018, 2020, 2022]
+
+
 def test_index_uses_default_wcs_url_when_not_overridden(monkeypatch, tmp_path):
     seen = {}
 

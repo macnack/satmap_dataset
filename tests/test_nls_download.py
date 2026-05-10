@@ -239,6 +239,47 @@ def test_download_re_checks_strict_years_after_drops(monkeypatch, tmp_path):
     assert data["provider_metadata"]["post_download_policy_errors"]
 
 
+def test_download_records_failed_year_in_excluded_with_reason(monkeypatch, tmp_path):
+    """When a yearly download fails (e.g., 5xx exhausted retries), the year must
+    appear in years_excluded_with_reason so downstream validation can diagnose
+    the gap, not just disappear into provider_metadata.failed_urls.
+    """
+    index_path = _write_index_manifest(tmp_path, [2018, 2019])
+    cfg = DownloadConfig(
+        index_manifest=index_path,
+        download_root=tmp_path / "downloads",
+        provider="nls",
+        provider_options={"api_key": "test-key"},
+        bbox="385000,6675000,387000,6677000",
+        srs="EPSG:3067",
+        retries=0,
+        output_json=tmp_path / "dataset_manifest_download.json",
+    )
+
+    import numpy as np
+    import tifffile
+    full = tmp_path / "full.tif"
+    tifffile.imwrite(full, np.full((64, 64, 3), 128, dtype=np.uint8), photometric="rgb")
+    full_bytes = full.read_bytes()
+
+    def handler(request):
+        if "2019" in str(request.url):
+            return httpx.Response(404, content=b"not found")
+        return httpx.Response(200, content=full_bytes)
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        "satmap_dataset.providers.nls.provider._make_async_client",
+        lambda **kw: httpx.AsyncClient(transport=transport, **kw),
+    )
+
+    exit_code, manifest_path = NlsProvider().download(cfg)
+    assert exit_code != 0  # one year failed
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert data["years_included"] == [2018]
+    assert data["years_excluded_with_reason"]["2019"] == "wcs_download_failed"
+
+
 def test_download_marks_failed_on_http_error(monkeypatch, tmp_path):
     index_path = _write_index_manifest(tmp_path, [2018])
     cfg = DownloadConfig(

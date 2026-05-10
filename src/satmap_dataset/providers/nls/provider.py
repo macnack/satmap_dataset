@@ -85,6 +85,9 @@ def _fetch_describe_coverage_xml(
         return response.content
 
 
+_OAPIF_MAX_PAGES = 50
+
+
 def _fetch_oapif_items_geojson(
     *,
     base_url: str,
@@ -94,12 +97,57 @@ def _fetch_oapif_items_geojson(
     limit: int = 1000,
     timeout: float = 60.0,
 ) -> bytes:
+    """Fetch the *first* page of OAPIF items. Pagination is handled by the caller."""
     url = oapif.build_items_url(base_url, collection=collection, bbox=bbox, limit=limit)
     headers = {"User-Agent": "satmap_dataset/0.1"}
     with httpx.Client(timeout=timeout, headers=headers) as client:
         response = client.get(_with_api_key(url, api_key))
         response.raise_for_status()
         return response.content
+
+
+def _fetch_oapif_aoi_years(
+    *,
+    base_url: str,
+    collection: str,
+    bbox: tuple[float, float, float, float],
+    api_key: str,
+    limit: int = 1000,
+    timeout: float = 60.0,
+    max_pages: int = _OAPIF_MAX_PAGES,
+) -> set[int]:
+    """Walk all OAPIF item pages for the AOI and return the union of `kuvausvuosi` years.
+
+    Stops at `max_pages` to avoid runaway pagination on misconfigured services;
+    raises if that limit is hit before exhausting the catalogue, since silently
+    truncating year coverage would defeat the whole purpose of pre-filtering.
+    """
+    page_bytes = _fetch_oapif_items_geojson(
+        base_url=base_url,
+        collection=collection,
+        bbox=bbox,
+        api_key=api_key,
+        limit=limit,
+        timeout=timeout,
+    )
+    years: set[int] = set(oapif.parse_aoi_years(page_bytes))
+    next_url = oapif.parse_next_link(page_bytes)
+    headers = {"User-Agent": "satmap_dataset/0.1"}
+    pages_fetched = 1
+    with httpx.Client(timeout=timeout, headers=headers) as client:
+        while next_url is not None:
+            if pages_fetched >= max_pages:
+                raise oapif.OapifParseError(
+                    f"OAPIF pagination exceeded max_pages={max_pages} for AOI; "
+                    "year coverage would be incomplete"
+                )
+            response = client.get(_with_api_key(next_url, api_key))
+            response.raise_for_status()
+            content = response.content
+            years.update(oapif.parse_aoi_years(content))
+            next_url = oapif.parse_next_link(content)
+            pages_fetched += 1
+    return years
 
 
 def _make_async_client(**kwargs: Any) -> httpx.AsyncClient:
@@ -250,13 +298,12 @@ class NlsProvider:
 
         warnings: list[str] = []
         try:
-            geojson_bytes = _fetch_oapif_items_geojson(
+            aoi_years: set[int] = _fetch_oapif_aoi_years(
                 base_url=oapif_url,
                 collection=oapif_collection,
                 bbox=bbox,
                 api_key=api_key,
             )
-            aoi_years: set[int] = oapif.parse_aoi_years(geojson_bytes)
             aoi_year_lookup_used = True
             logger.info("NLS index: AOI has photos for years %s", sorted(aoi_years))
         except (httpx.HTTPError, oapif.OapifParseError) as exc:
@@ -436,6 +483,7 @@ class NlsProvider:
                     )
                 if not ok:
                     failed.append(url)
+                    dropped[year] = "wcs_download_failed"
                     continue
                 drop_reason = _classify_tile(output_path, min_coverage_ratio=min_coverage)
                 if drop_reason is not None:

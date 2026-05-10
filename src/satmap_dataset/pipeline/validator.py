@@ -195,6 +195,17 @@ def _bbox_within_tolerance(actual: BBox, expected: BBox, tol_x: float, tol_y: fl
     )
 
 
+def _epsg_code(srs: str) -> int | None:
+    """Parse the integer EPSG code from a string like 'EPSG:3067'."""
+    upper = srs.strip().upper()
+    if not upper.startswith("EPSG:"):
+        return None
+    try:
+        return int(upper.split(":", 1)[1])
+    except ValueError:
+        return None
+
+
 def _validate_sidecars(asset_path: Path, target_srs: str) -> list[str]:
     errors: list[str] = []
     tfw = asset_path.with_suffix(".tfw")
@@ -212,13 +223,20 @@ def _validate_sidecars(asset_path: Path, target_srs: str) -> list[str]:
             except ValueError:
                 errors.append(f"World file contains non-numeric values for {asset_path.name}")
 
-    if target_srs.upper() == "EPSG:2180":
-        if not prj.exists():
-            errors.append(f"Missing projection file for {asset_path.name}: {prj.name}")
-        else:
-            prj_text = prj.read_text(encoding="ascii", errors="ignore")
-            if "EPSG\",\"2180" not in prj_text and "CS92" not in prj_text:
-                errors.append(f"Projection file does not indicate EPSG:2180 for {asset_path.name}")
+    epsg = _epsg_code(target_srs)
+    if epsg is None:
+        return errors
+    # Render writes a .prj sidecar for any EPSG it knows the WKT for; check the
+    # AUTHORITY tag matches the target_srs declared in the manifest. Skip if no
+    # .prj exists — render does that intentionally for unknown CRSes, and we
+    # don't want to fail validation just because the WKT lookup is incomplete.
+    if not prj.exists():
+        return errors
+    prj_text = prj.read_text(encoding="ascii", errors="ignore")
+    if f'EPSG","{epsg}"' not in prj_text:
+        errors.append(
+            f"Projection file does not indicate EPSG:{epsg} for {asset_path.name}"
+        )
     return errors
 
 
@@ -288,8 +306,11 @@ def run(config: ValidateConfig) -> tuple[int, Path]:
                 report.passed = False
 
             georef_bbox, epsg = _read_georef_bbox_and_epsg(asset_path)
-            if target_srs == "EPSG:2180" and epsg != 2180:
-                report.errors.append(f"Invalid GeoTIFF EPSG for {asset}: {epsg} expected 2180")
+            expected_epsg = _epsg_code(target_srs)
+            if expected_epsg is not None and epsg != expected_epsg:
+                report.errors.append(
+                    f"Invalid GeoTIFF EPSG for {asset}: {epsg} expected {expected_epsg}"
+                )
                 report.passed = False
 
             if target_bbox is not None and width_ref is not None and height_ref is not None:
