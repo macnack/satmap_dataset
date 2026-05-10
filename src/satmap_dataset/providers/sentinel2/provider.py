@@ -148,6 +148,18 @@ def _parse_bbox(value: str) -> tuple[float, float, float, float]:
 def _bbox_to_wgs84(
     bbox: tuple[float, float, float, float], src_srs: str
 ) -> tuple[float, float, float, float]:
+    """Convert a projected AOI bbox to a WGS84 (lon/lat) bbox.
+
+    Only the two diagonal corners are transformed; the result is the axis-
+    aligned envelope of those two points. For AOIs that straddle a UTM zone
+    edge or other strongly curved projections the projected min/max can
+    under-cover the true footprint by a small margin.
+
+    This is acceptable for our usage because the WGS84 bbox is only used as a
+    loose-tolerance STAC bbox query — STAC returns any item whose footprint
+    intersects the query, and we then re-filter spatially per-item in
+    ``pick_item_for_bbox`` against the projected AOI.
+    """
     if src_srs.upper() == "EPSG:4326":
         return bbox
     minx, miny, maxx, maxy = bbox
