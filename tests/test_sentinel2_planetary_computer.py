@@ -53,6 +53,14 @@ def test_resolve_search_options_explicit_stac_url_overrides_host_default() -> No
     assert opts.url == "https://example.org/custom"
 
 
+def test_resolve_search_options_explicit_stac_host_beats_stale_env_var(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SATMAP_SENTINEL2_STAC_URL", "https://stale.example.org/search")
+    opts = _resolve_search_options({"stac_host": "planetary_computer"})
+    assert opts.url == STAC_URL_BY_HOST[STAC_HOST_PLANETARY_COMPUTER]
+
+
 class _FakeMpcSignTransport(httpx.AsyncBaseTransport):
     """Asserts the SAS sign endpoint is called and returns a deterministic href."""
 

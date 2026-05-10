@@ -102,12 +102,20 @@ def _default_stac_url_for_host(host: str) -> str:
 
 def _resolve_search_options(options: dict[str, Any]) -> stac.StacSearchOptions:
     host = _resolve_stac_host(options)
-    url = _option(
-        options,
-        "stac_url",
-        "SATMAP_SENTINEL2_STAC_URL",
-        _default_stac_url_for_host(host),
-    )
+    # Precedence: explicit options.stac_url > explicit options.stac_host (host
+    # default URL) > SATMAP_SENTINEL2_STAC_URL env var > host default URL.
+    # An explicit stac_host in provider_options must beat a stale env var that
+    # might still point at a different backend.
+    explicit_stac_url = options.get("stac_url")
+    explicit_stac_host = options.get("stac_host")
+    host_default_url = _default_stac_url_for_host(host)
+    if explicit_stac_url not in (None, ""):
+        url: Any = explicit_stac_url
+    elif explicit_stac_host not in (None, ""):
+        url = host_default_url
+    else:
+        env_value = os.environ.get("SATMAP_SENTINEL2_STAC_URL")
+        url = env_value if env_value else host_default_url
     collection_value = _option(
         options,
         "stac_collection",
