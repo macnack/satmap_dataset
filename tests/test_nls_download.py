@@ -167,6 +167,78 @@ def test_download_drops_partial_coverage_strips(monkeypatch, tmp_path):
     assert not (cfg.download_root / "2013" / "nls_2013.tif").exists()
 
 
+def test_download_re_checks_strict_years_after_drops(monkeypatch, tmp_path):
+    """Empty/partial drops must re-trigger the year policy. With strict_years=True
+    and a year dropped, passed must be False even if the survivors downloaded fine.
+    """
+    import numpy as np
+    import tifffile
+
+    # Index claims 2018 and 2019 are both available with strict_years=True.
+    manifest = IndexManifest(
+        provider="nls",
+        year_start=2018,
+        year_end=2019,
+        bbox="385000,6675000,387000,6677000",
+        srs="EPSG:3067",
+        strict_years=True,
+        years_requested=[2018, 2019],
+        year_statuses=[
+            YearStatus(year=2018, typename_exists=True, feature_count=1, status="has_features"),
+            YearStatus(year=2019, typename_exists=True, feature_count=1, status="has_features"),
+        ],
+        years_available_wfs=[2018, 2019],
+        years_included=[2018, 2019],
+        common_tile_ids=["nls_2018", "nls_2019"],
+        tile_sources_by_year={
+            2018: {"nls_2018": "https://example.test/wcs?year=2018"},
+            2019: {"nls_2019": "https://example.test/wcs?year=2019"},
+        },
+        tile_bboxes_by_year={
+            2018: {"nls_2018": [0, 0, 1, 1]},
+            2019: {"nls_2019": [0, 0, 1, 1]},
+        },
+        passed=True,
+    )
+    index_path = tmp_path / "index_manifest.json"
+    index_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+
+    cfg = DownloadConfig(
+        index_manifest=index_path,
+        download_root=tmp_path / "downloads",
+        provider="nls",
+        provider_options={"api_key": "test-key"},
+        bbox="385000,6675000,387000,6677000",
+        srs="EPSG:3067",
+        output_json=tmp_path / "dataset_manifest_download.json",
+    )
+
+    full = tmp_path / "full.tif"
+    empty = tmp_path / "empty.tif"
+    tifffile.imwrite(full, np.full((64, 64, 3), 128, dtype=np.uint8), photometric="rgb")
+    tifffile.imwrite(empty, np.zeros((64, 64, 3), dtype=np.uint8), photometric="rgb")
+    full_bytes = full.read_bytes()
+    empty_bytes = empty.read_bytes()
+
+    def handler(request):
+        if "2019" in str(request.url):
+            return httpx.Response(200, content=empty_bytes)
+        return httpx.Response(200, content=full_bytes)
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        "satmap_dataset.providers.nls.provider._make_async_client",
+        lambda **kw: httpx.AsyncClient(transport=transport, **kw),
+    )
+
+    exit_code, manifest_path = NlsProvider().download(cfg)
+    assert exit_code != 0, "strict_years=True must fail when any requested year is missing"
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert data["passed"] is False
+    assert data["years_included"] == [2018]
+    assert data["provider_metadata"]["post_download_policy_errors"]
+
+
 def test_download_marks_failed_on_http_error(monkeypatch, tmp_path):
     index_path = _write_index_manifest(tmp_path, [2018])
     cfg = DownloadConfig(

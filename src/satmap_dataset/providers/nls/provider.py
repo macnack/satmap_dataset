@@ -259,13 +259,21 @@ class NlsProvider:
             aoi_years: set[int] = oapif.parse_aoi_years(geojson_bytes)
             aoi_year_lookup_used = True
             logger.info("NLS index: AOI has photos for years %s", sorted(aoi_years))
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, oapif.OapifParseError) as exc:
+            # Both transport failures (HTTP 5xx, network) and unparseable
+            # bodies (HTML error page, truncated payload) fall back to the
+            # WCS-wide year list with a warning. Treating an unparseable
+            # response as "AOI has no coverage" would silently exclude every
+            # year from a perfectly valid AOI.
             warnings.append(
                 f"OGC API Features query failed; falling back to coverage-wide year list: {exc}"
             )
             aoi_years = set(available_years)
             aoi_year_lookup_used = False
-            logger.warning("NLS index: OAPIF check failed (%s); will rely on download-time empty filter", exc)
+            logger.warning(
+                "NLS index: OAPIF check failed (%s); will rely on download-time empty filter",
+                exc,
+            )
 
         requested_years = config.requested_years
         years_included = [y for y in requested_years if y in aoi_years]
@@ -448,13 +456,25 @@ class NlsProvider:
         for year, reason in dropped.items():
             years_excluded[year] = reason
 
+        # Re-evaluate the year policy against what actually survived download.
+        # Without this, runs with strict_years=True or min_years>1 could
+        # silently report passed=True even when empty/partial drops left the
+        # surviving year set below the policy floor.
+        sorted_included = sorted(years_included_effective)
+        download_policy = evaluate_year_policy(
+            requested_years=index_manifest.years_requested,
+            available_years=sorted_included,
+            strict_years=index_manifest.strict_years,
+            min_years=index_manifest.min_years,
+        )
+
         manifest = DatasetManifest(
             provider="nls",
             stage="download",
             mode="wcs",
             years_requested=index_manifest.years_requested,
             years_available_wfs=index_manifest.years_available_wfs,
-            years_included=sorted(years_included_effective),
+            years_included=sorted_included,
             years_excluded_with_reason=years_excluded,
             common_tile_ids=index_manifest.common_tile_ids,
             tile_sources_by_year=index_manifest.tile_sources_by_year,
@@ -467,7 +487,9 @@ class NlsProvider:
             px_per_meter=config.px_per_meter,
             years_source_map=years_source_map,
             forced_wms_years=[],
-            passed=bool(assets) and not failed,
+            passed=(
+                bool(assets) and not failed and download_policy.passed
+            ),
             notes=(
                 f"provider=nls downloaded={len(assets)} failed={len(failed)} "
                 f"dropped={len(dropped)}"
@@ -477,6 +499,8 @@ class NlsProvider:
                 "failed_urls": failed,
                 "dropped_years": dropped,
                 "min_coverage_ratio": min_coverage,
+                "post_download_policy_errors": list(download_policy.errors),
+                "post_download_policy_warnings": list(download_policy.warnings),
             },
         )
         config.output_json.parent.mkdir(parents=True, exist_ok=True)

@@ -8,7 +8,9 @@ from urllib.parse import parse_qsl, urlparse
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from satmap_dataset.providers.nls.oapif import build_items_url, parse_aoi_years
+import pytest
+
+from satmap_dataset.providers.nls.oapif import OapifParseError, build_items_url, parse_aoi_years
 
 
 BASE = "https://avoin-karttakuva.maanmittauslaitos.fi/ortokuvat-ja-korkeusmallit/features/v2"
@@ -46,5 +48,20 @@ def test_parse_aoi_years_handles_empty_collection():
     assert parse_aoi_years(payload) == set()
 
 
-def test_parse_aoi_years_handles_invalid_json():
-    assert parse_aoi_years(b"not json at all") == set()
+def test_parse_aoi_years_raises_on_invalid_json():
+    """Invalid JSON must raise so the provider can fall back to the WCS-wide year list,
+    instead of being mistaken for 'AOI has no orthophoto coverage'.
+    """
+    with pytest.raises(OapifParseError):
+        parse_aoi_years(b"not json at all")
+
+
+def test_parse_aoi_years_raises_on_html_error_page():
+    """A 200 with an HTML body (common when an upstream proxy intercepts) must raise."""
+    with pytest.raises(OapifParseError):
+        parse_aoi_years(b"<!doctype html><html><body>503 backend down</body></html>")
+
+
+def test_parse_aoi_years_raises_when_features_key_missing():
+    with pytest.raises(OapifParseError):
+        parse_aoi_years(b'{"some": "other shape"}')

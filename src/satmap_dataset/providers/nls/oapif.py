@@ -39,12 +39,31 @@ def build_items_url(
     return f"{base_url.rstrip('/')}/collections/{collection}/items?{urlencode(params)}"
 
 
+class OapifParseError(ValueError):
+    """Raised when an OAPIF response cannot be interpreted as GeoJSON features.
+
+    The provider distinguishes this from a successful response with zero
+    features so that a 200 HTML error page or truncated body falls back to
+    the WCS-wide year list with a warning, instead of being mistaken for
+    "AOI has no orthophoto coverage for any year".
+    """
+
+
 def parse_aoi_years(features_geojson: bytes) -> set[int]:
-    """Return the set of integer years from `kuvausvuosi` across all features."""
+    """Return the set of integer years from `kuvausvuosi` across all features.
+
+    Raises OapifParseError if the payload is not parseable JSON or doesn't
+    look like a FeatureCollection. An empty `features` list is *not* an
+    error and returns the empty set.
+    """
     try:
         data = json.loads(features_geojson)
-    except (ValueError, json.JSONDecodeError):
-        return set()
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise OapifParseError(f"OAPIF response is not valid JSON: {exc}") from exc
+    if not isinstance(data, dict) or "features" not in data:
+        raise OapifParseError(
+            "OAPIF response missing 'features' array (likely an HTML error page or unexpected schema)"
+        )
     years: set[int] = set()
     for feature in data.get("features", []):
         props = feature.get("properties", {}) or {}

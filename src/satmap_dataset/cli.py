@@ -1276,11 +1276,22 @@ def validate_all_location_json_command(
     raise typer.Exit(code=0)
 
 
+def _nls_force_provider(payload: dict) -> dict:
+    """Pin provider='nls' on the payload so the NLS-specific config validators run.
+
+    Without this, a config that omits `provider` (or sets `provider='geoportal'`)
+    would skip the EPSG:3067 srs guard even though we're about to run NlsProvider.
+    """
+    payload = dict(payload)
+    payload["provider"] = "nls"
+    return payload
+
+
 @app.command("nls-index-json")
 def nls_index_json(config_json: Path = typer.Argument(..., exists=True)) -> None:
     from satmap_dataset.providers.nls import NlsProvider
 
-    payload = json.loads(config_json.read_text(encoding="utf-8"))
+    payload = _nls_force_provider(json.loads(config_json.read_text(encoding="utf-8")))
     try:
         cfg = IndexConfig(**payload)
     except ValidationError as error:
@@ -1315,7 +1326,7 @@ def _nls_build_download_config(payload: dict, index_manifest_path: Path) -> Down
 def nls_download_json(config_json: Path = typer.Argument(..., exists=True)) -> None:
     from satmap_dataset.providers.nls import NlsProvider
 
-    payload = json.loads(config_json.read_text(encoding="utf-8"))
+    payload = _nls_force_provider(json.loads(config_json.read_text(encoding="utf-8")))
     try:
         # Parse as IndexConfig to learn where the index manifest lives
         # (the SIVL configs use a single output_json field for the index path).
@@ -1335,7 +1346,7 @@ def nls_run_json(config_json: Path = typer.Argument(..., exists=True)) -> None:
     """Single-shot NLS index + download from one JSON config."""
     from satmap_dataset.providers.nls import NlsProvider
 
-    payload = json.loads(config_json.read_text(encoding="utf-8"))
+    payload = _nls_force_provider(json.loads(config_json.read_text(encoding="utf-8")))
     try:
         index_cfg = IndexConfig(**{k: v for k, v in payload.items() if k in IndexConfig.model_fields})
     except ValidationError as error:

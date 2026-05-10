@@ -66,6 +66,28 @@ def test_nls_index_json_validation_error_exits_2(tmp_path):
     assert result.exit_code == 2
 
 
+def test_nls_index_json_rejects_config_without_provider_when_srs_wrong(monkeypatch, tmp_path):
+    """A config missing 'provider' is still NLS (CLI is named nls-index-json) and must trigger
+    the EPSG:3067 guard. Otherwise a Polish-default EPSG:2180 bbox could reach NLS endpoints.
+    """
+    _patch_fetchers(monkeypatch, available_years=[2018])
+    cfg = {
+        "year_start": 2018,
+        "year_end": 2018,
+        "bbox": "210300,521900,210500,522100",
+        "srs": "EPSG:2180",  # Polish CRS — must be rejected
+        # No "provider" field on purpose
+        "provider_options": {"api_key": "test-key"},
+        "output_json": str(tmp_path / "index_manifest.json"),
+        "year_availability_output_json": str(tmp_path / "year_availability_report.json"),
+    }
+    config_path = tmp_path / "cfg.json"
+    config_path.write_text(json.dumps(cfg), encoding="utf-8")
+    result = runner.invoke(app, ["nls-index-json", str(config_path)])
+    assert result.exit_code == 2
+    assert "EPSG:3067" in result.output
+
+
 def test_nls_download_json_uses_index_manifest_from_config_output_json(monkeypatch, tmp_path):
     """Standalone download-json must read the index manifest from the same config's output_json,
     not from DownloadConfig.index_manifest's default of artifacts/index_manifest.json.
