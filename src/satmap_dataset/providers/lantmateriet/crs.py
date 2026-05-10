@@ -45,6 +45,7 @@ def transform_bbox_wgs84_to(
 
 _PROJECTED_DEFS = {
     "EPSG:3006": [
+        # SWEREF 99 TM (Sweden)
         "+proj=tmerc",
         "+lat_0=0",
         "+lon_0=15",
@@ -56,6 +57,7 @@ _PROJECTED_DEFS = {
         "+no_defs",
     ],
     "EPSG:2180": [
+        # ETRS89 / Poland CS92
         "+proj=tmerc",
         "+lat_0=0",
         "+lon_0=19",
@@ -66,7 +68,50 @@ _PROJECTED_DEFS = {
         "+units=m",
         "+no_defs",
     ],
+    "EPSG:3067": [
+        # ETRS89 / TM35FIN (Finland) — same TM parameters as UTM 35N but
+        # GRS80 datum.
+        "+proj=tmerc",
+        "+lat_0=0",
+        "+lon_0=27",
+        "+k=0.9996",
+        "+x_0=500000",
+        "+y_0=0",
+        "+ellps=GRS80",
+        "+units=m",
+        "+no_defs",
+    ],
 }
+
+
+def _utm_defs_for_epsg(code: int) -> list[str] | None:
+    """Return PROJ defs for WGS84 UTM zones (EPSG:32601–32660 N, 32701–32760 S)."""
+    if 32601 <= code <= 32660:
+        zone = code - 32600
+        return ["+proj=utm", f"+zone={zone}", "+ellps=WGS84", "+datum=WGS84", "+units=m", "+no_defs"]
+    if 32701 <= code <= 32760:
+        zone = code - 32700
+        return [
+            "+proj=utm",
+            f"+zone={zone}",
+            "+south",
+            "+ellps=WGS84",
+            "+datum=WGS84",
+            "+units=m",
+            "+no_defs",
+        ]
+    return None
+
+
+def _projected_defs(epsg_label: str) -> list[str] | None:
+    if epsg_label in _PROJECTED_DEFS:
+        return _PROJECTED_DEFS[epsg_label]
+    if epsg_label.startswith("EPSG:"):
+        try:
+            return _utm_defs_for_epsg(int(epsg_label.split(":", 1)[1]))
+        except ValueError:
+            return None
+    return None
 
 
 def _transform_point_proj_cli(
@@ -79,16 +124,19 @@ def _transform_point_proj_cli(
 ) -> tuple[float, float]:
     src_upper = src_crs.upper()
     dst_upper = dst_crs.upper()
-    if src_upper == "EPSG:4326" and dst_upper in _PROJECTED_DEFS:
+    src_defs = _projected_defs(src_upper)
+    dst_defs = _projected_defs(dst_upper)
+    if src_upper == "EPSG:4326" and dst_defs is not None:
         forward = True
-        defs = _PROJECTED_DEFS[dst_upper]
-    elif dst_upper == "EPSG:4326" and src_upper in _PROJECTED_DEFS:
+        defs = dst_defs
+    elif dst_upper == "EPSG:4326" and src_defs is not None:
         forward = False
-        defs = _PROJECTED_DEFS[src_upper]
+        defs = src_defs
     else:
         raise RuntimeError(
             "pyproj is required for general CRS transforms; install pyproj or "
-            "restrict to lat/lon <-> EPSG:3006 / EPSG:2180."
+            "restrict to lat/lon <-> EPSG:3006 / EPSG:2180 / EPSG:326NN (UTM N) "
+            "/ EPSG:327NN (UTM S)."
         )
 
     args = ["proj", *defs] if forward else ["proj", "-I", *defs]

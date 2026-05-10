@@ -47,7 +47,61 @@ EPSG_3006_WKT = (
     'AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","3006"]]'
 )
 
-_PROJ_WKT_BY_EPSG = {2180: EPSG_2180_WKT, 3006: EPSG_3006_WKT}
+EPSG_3067_WKT = (
+    'PROJCS["ETRS89 / TM35FIN(E,N)",GEOGCS["ETRS89",'
+    'DATUM["European Terrestrial Reference System 1989",'
+    'SPHEROID["GRS 1980",6378137,298.257222101]],'
+    'PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],'
+    'PROJECTION["Transverse_Mercator"],'
+    'PARAMETER["latitude_of_origin",0],'
+    'PARAMETER["central_meridian",27],'
+    'PARAMETER["scale_factor",0.9996],'
+    'PARAMETER["false_easting",500000],'
+    'PARAMETER["false_northing",0],UNIT["metre",1],'
+    'AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","3067"]]'
+)
+
+_PROJ_WKT_BY_EPSG = {2180: EPSG_2180_WKT, 3006: EPSG_3006_WKT, 3067: EPSG_3067_WKT}
+
+
+def _utm_wkt_for_epsg(code: int) -> str | None:
+    """Synthesize a minimal WGS84 UTM WKT for EPSG:326NN / 327NN.
+
+    The exact form matches what GDAL writes for the same code, so QGIS,
+    ArcGIS, and pyproj all recognise the .prj sidecar.
+    """
+    if 32601 <= code <= 32660:
+        zone = code - 32600
+        hemisphere = "N"
+        false_northing = 0
+    elif 32701 <= code <= 32760:
+        zone = code - 32700
+        hemisphere = "S"
+        false_northing = 10000000
+    else:
+        return None
+    central_meridian = -183 + 6 * zone  # zone 1 → -177, zone 60 → +177
+    return (
+        f'PROJCS["WGS 84 / UTM zone {zone}{hemisphere}",GEOGCS["WGS 84",'
+        'DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],'
+        'PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],'
+        'PROJECTION["Transverse_Mercator"],'
+        'PARAMETER["latitude_of_origin",0],'
+        f'PARAMETER["central_meridian",{central_meridian}],'
+        'PARAMETER["scale_factor",0.9996],'
+        'PARAMETER["false_easting",500000],'
+        f'PARAMETER["false_northing",{false_northing}],UNIT["metre",1],'
+        'AXIS["Easting",EAST],AXIS["Northing",NORTH],'
+        f'AUTHORITY["EPSG","{code}"]]'
+    )
+
+
+def _wkt_for_epsg(code: int | None) -> str | None:
+    if code is None:
+        return None
+    if code in _PROJ_WKT_BY_EPSG:
+        return _PROJ_WKT_BY_EPSG[code]
+    return _utm_wkt_for_epsg(code)
 
 
 def _epsg_code_from_srs(srs: str) -> int | None:
@@ -197,6 +251,178 @@ def _resolve_target_dimensions(config: RenderConfig, target_bbox: BBox) -> tuple
     if not config.auto_size_from_bbox:
         raise ValueError("target_width and target_height are required when auto_size_from_bbox is disabled")
     return _compute_reference_dimensions(target_bbox, config.px_per_meter)
+
+
+def _read_source_epsg(path: Path) -> int | None:
+    """Return the projected EPSG code embedded in `path`, or None if absent."""
+    try:
+        with tifffile.TiffFile(path) as tif:
+            return _extract_epsg_from_geokey(tif.pages[0])
+    except Exception:
+        return None
+
+
+def _gdalwarp_path() -> str | None:
+    return shutil.which("gdalwarp")
+
+
+def _reproject_cache_filename(
+    src_stem: str,
+    *,
+    target_epsg: int,
+    target_bbox: "BBox | None",
+    target_pixel_size: float | None,
+    resample_method: str,
+    margin_meters: float,
+) -> str:
+    payload: dict[str, object] = {
+        "epsg": target_epsg,
+        "resample": resample_method,
+        "margin": margin_meters,
+    }
+    if target_bbox is not None:
+        payload["bbox"] = [
+            round(target_bbox.min_x, 3),
+            round(target_bbox.min_y, 3),
+            round(target_bbox.max_x, 3),
+            round(target_bbox.max_y, 3),
+        ]
+    if target_pixel_size is not None:
+        payload["pixel_size"] = round(float(target_pixel_size), 6)
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    digest = hashlib.sha1(encoded).hexdigest()[:12]
+    return f"{src_stem}__epsg{target_epsg}_{digest}.tif"
+
+
+def _reproject_asset_to_target_crs(
+    src_path: Path,
+    *,
+    target_srs: str,
+    resample_method: str,
+    target_bbox: "BBox | None" = None,
+    target_pixel_size: float | None = None,
+    margin_meters: float = 500.0,
+) -> Path:
+    """Ensure `src_path` is in `target_srs`. Reproject via gdalwarp if not.
+
+    When `target_bbox` and `target_pixel_size` are supplied, the warp is
+    clipped to ``target_bbox`` (with a small ``margin_meters`` buffer) and
+    resampled to ``target_pixel_size`` in a single pass — output is roughly
+    AOI-sized, not full-source-extent.
+
+    Reprojected tiles are cached next to the source file under
+    ``_reprojected/`` keyed by hash of (target_srs, target_bbox,
+    target_pixel_size, resample_method) so concurrent configs don't fight.
+    """
+    target_epsg = _epsg_code_from_srs(target_srs)
+    if target_epsg is None:
+        return src_path
+    src_epsg = _read_source_epsg(src_path)
+    if src_epsg is None or src_epsg == target_epsg:
+        return src_path
+
+    cache_dir = src_path.parent / "_reprojected"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cached = cache_dir / _reproject_cache_filename(
+        src_path.stem,
+        target_epsg=target_epsg,
+        target_bbox=target_bbox,
+        target_pixel_size=target_pixel_size,
+        resample_method=resample_method,
+        margin_meters=margin_meters,
+    )
+    if cached.exists() and cached.stat().st_size > 0:
+        return cached
+
+    gdalwarp = _gdalwarp_path()
+    if gdalwarp is None:
+        raise RuntimeError(
+            f"Source asset {src_path} is in EPSG:{src_epsg} but render target is "
+            f"EPSG:{target_epsg}. Install GDAL (provides gdalwarp) or set the "
+            "target_srs to match the source CRS."
+        )
+
+    resampling = "bilinear" if resample_method == "bilinear" else "near"
+    cmd: list[str] = [
+        gdalwarp,
+        "-t_srs", f"EPSG:{target_epsg}",
+        "-r", resampling,
+        "-of", "GTiff",
+        "-co", "COMPRESS=DEFLATE",
+        "-co", "TILED=YES",
+        "-co", "BIGTIFF=IF_SAFER",
+        "-q",
+        "-overwrite",
+    ]
+    if target_bbox is not None:
+        buffered = (
+            target_bbox.min_x - margin_meters,
+            target_bbox.min_y - margin_meters,
+            target_bbox.max_x + margin_meters,
+            target_bbox.max_y + margin_meters,
+        )
+        cmd += [
+            "-te",
+            f"{buffered[0]:.3f}",
+            f"{buffered[1]:.3f}",
+            f"{buffered[2]:.3f}",
+            f"{buffered[3]:.3f}",
+            "-te_srs", f"EPSG:{target_epsg}",
+        ]
+    if target_pixel_size is not None:
+        cmd += ["-tr", str(float(target_pixel_size)), str(float(target_pixel_size))]
+    cmd += [str(src_path), str(cached)]
+
+    logger.info(
+        "Render: reprojecting %s from EPSG:%s to EPSG:%s%s -> %s",
+        src_path.name,
+        src_epsg,
+        target_epsg,
+        " (AOI-clipped)" if target_bbox is not None else " (full extent)",
+        cached.name,
+    )
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as exc:
+        # gdalwarp on a multi-GB COG can produce verbose stderr; tail-truncate
+        # to the last 500 chars so the RuntimeError stays bounded.
+        stderr_text = exc.stderr.strip() if exc.stderr else ""
+        if stderr_text:
+            max_chars = 500
+            if len(stderr_text) > max_chars:
+                stderr_text = "…" + stderr_text[-max_chars:]
+            detail: object = stderr_text
+        else:
+            detail = exc
+        raise RuntimeError(
+            f"gdalwarp failed reprojecting {src_path} to EPSG:{target_epsg}: "
+            f"{detail}"
+        ) from exc
+    return cached
+
+
+def _reproject_grouped_assets_to_target_crs(
+    grouped_assets: dict[int, list[Path]],
+    *,
+    target_srs: str,
+    resample_method: str,
+    target_bbox: "BBox | None" = None,
+    target_pixel_size: float | None = None,
+) -> dict[int, list[Path]]:
+    """Run `_reproject_asset_to_target_crs` over every asset in every year."""
+    reprojected: dict[int, list[Path]] = {}
+    for year, paths in grouped_assets.items():
+        reprojected[year] = [
+            _reproject_asset_to_target_crs(
+                p,
+                target_srs=target_srs,
+                resample_method=resample_method,
+                target_bbox=target_bbox,
+                target_pixel_size=target_pixel_size,
+            )
+            for p in paths
+        ]
+    return reprojected
 
 
 def _read_georef(path: Path) -> GeoRef:
@@ -473,7 +699,7 @@ def _can_reuse_render_output(
     if not out_path.with_suffix(".tfw").exists():
         return False
     target_epsg = _epsg_code_from_srs(target_srs)
-    if target_epsg in _PROJ_WKT_BY_EPSG and not out_path.with_suffix(".prj").exists():
+    if _wkt_for_epsg(target_epsg) is not None and not out_path.with_suffix(".prj").exists():
         return False
 
     try:
@@ -483,7 +709,7 @@ def _can_reuse_render_output(
                 return False
             if page.tags.get("ModelPixelScaleTag") is None or page.tags.get("ModelTiepointTag") is None:
                 return False
-            if target_epsg in _PROJ_WKT_BY_EPSG:
+            if target_epsg is not None:
                 if _extract_epsg_from_geokey(page) != target_epsg:
                     return False
         georef = _read_georef(out_path)
@@ -547,8 +773,7 @@ def _write_worldfile_and_prj(out_path: Path, target_bbox: BBox, target_width: in
         encoding="ascii",
     )
 
-    epsg_code = _epsg_code_from_srs(srs)
-    wkt = _PROJ_WKT_BY_EPSG.get(epsg_code) if epsg_code is not None else None
+    wkt = _wkt_for_epsg(_epsg_code_from_srs(srs))
     if wkt is not None:
         out_path.with_suffix(".prj").write_text(wkt, encoding="ascii")
 
@@ -585,7 +810,7 @@ def _apply_geotiff_tags_tifffile(
     srs: str,
 ) -> bool:
     epsg_code = _epsg_code_from_srs(srs)
-    if epsg_code is None or epsg_code not in _PROJ_WKT_BY_EPSG:
+    if epsg_code is None:
         raise ValueError(f"Unsupported SRS for GeoTIFF tagging: {srs}")
 
     pixel_size_x, pixel_size_y = _pixel_size_from_bbox(target_bbox, target_width, target_height)
@@ -868,6 +1093,14 @@ def run(config: RenderConfig) -> tuple[int, Path]:
     target_bbox = _resolve_target_bbox(config, source_manifest, config.dataset_manifest)
     grouped_assets = _group_assets_by_year(source_manifest.assets, config.dataset_manifest)
     target_width, target_height = _resolve_target_dimensions(config, target_bbox)
+    target_pixel_size, _ = _pixel_size_from_bbox(target_bbox, target_width, target_height)
+    grouped_assets = _reproject_grouped_assets_to_target_crs(
+        grouped_assets,
+        target_srs=config.target_srs,
+        resample_method=config.resample_method,
+        target_bbox=target_bbox,
+        target_pixel_size=target_pixel_size,
+    )
     years_source_map = dict(source_manifest.years_source_map)
     inferred_source_axis_mode = _infer_global_wfs_axis_mode(
         grouped_assets=grouped_assets,
