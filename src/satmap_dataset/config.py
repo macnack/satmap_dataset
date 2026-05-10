@@ -23,6 +23,18 @@ def _validate_bbox(value: str) -> str:
     return value
 
 
+_NLS_NATIVE_SRS = "EPSG:3067"
+
+
+def _validate_provider_srs(provider: str, srs: str) -> None:
+    if provider == "nls" and srs.upper() != _NLS_NATIVE_SRS:
+        raise ValueError(
+            f"provider='nls' requires srs='{_NLS_NATIVE_SRS}' (NLS WCS/OAPIF "
+            f"only accept TM35FIN coordinates); got srs={srs!r}. "
+            "Reproject your bbox to EPSG:3067 before configuring an NLS run."
+        )
+
+
 class IndexConfig(BaseModel):
     year_start: int = Field(..., ge=1900)
     year_end: int = Field(..., ge=1900)
@@ -45,6 +57,7 @@ class IndexConfig(BaseModel):
     def validate_year_range(self) -> "IndexConfig":
         if self.year_end < self.year_start:
             raise ValueError("year_end must be >= year_start")
+        _validate_provider_srs(self.provider, self.srs)
         return self
 
     @property
@@ -77,6 +90,7 @@ class DownloadConfig(BaseModel):
     def validate_sleep_range(self) -> "DownloadConfig":
         if self.sleep_max < self.sleep_min:
             raise ValueError("sleep_max must be >= sleep_min")
+        _validate_provider_srs(self.provider, self.srs)
         allowed_modes = {"wms_tiled", "wfs_render", "hybrid"}
         if self.mode not in allowed_modes:
             raise ValueError(f"mode must be one of {sorted(allowed_modes)}")

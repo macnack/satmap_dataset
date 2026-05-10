@@ -59,7 +59,11 @@ Resolution order (first hit wins):
 2. Env var `SATMAP_NLS_API_KEY`
 3. `.secret` file at the project root (single-line UUID)
 
-Sent as HTTP Basic Auth: username `api-key`, password `<KEY>` (per NLS docs).
+**Sent as `?api-key=<KEY>` query parameter on every request.** The NLS open
+WCS endpoint rejects HTTP Basic Auth (401) — only the WMS docs mention
+Basic; the WCS expects the query-string form. Verified empirically against
+the live endpoint. The key is appended at request time so manifest URLs on
+disk remain key-free.
 
 ## Data flow
 

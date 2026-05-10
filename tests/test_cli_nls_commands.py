@@ -66,6 +66,72 @@ def test_nls_index_json_validation_error_exits_2(tmp_path):
     assert result.exit_code == 2
 
 
+def test_nls_download_json_uses_index_manifest_from_config_output_json(monkeypatch, tmp_path):
+    """Standalone download-json must read the index manifest from the same config's output_json,
+    not from DownloadConfig.index_manifest's default of artifacts/index_manifest.json.
+    """
+    import httpx
+    from satmap_dataset.models import IndexManifest, YearStatus
+
+    # Pre-write an IndexManifest at the path the config's output_json points to.
+    index_path = tmp_path / "custom_index_manifest.json"
+    manifest = IndexManifest(
+        provider="nls",
+        year_start=2018,
+        year_end=2018,
+        bbox="385000,6675000,387000,6677000",
+        srs="EPSG:3067",
+        years_requested=[2018],
+        year_statuses=[YearStatus(year=2018, typename_exists=True, feature_count=1, status="has_features")],
+        years_available_wfs=[2018],
+        years_included=[2018],
+        common_tile_ids=["nls_2018"],
+        tile_sources_by_year={2018: {"nls_2018": "https://example.test/wcs?year=2018"}},
+        tile_bboxes_by_year={2018: {"nls_2018": [0, 0, 1, 1]}},
+        passed=True,
+    )
+    index_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+
+    def handler(request):
+        # Real RGB tile (above the partial-coverage threshold).
+        import numpy as np
+        import tifffile
+        import io
+
+        buf = io.BytesIO()
+        tifffile.imwrite(buf, np.full((64, 64, 3), 128, dtype=np.uint8), photometric="rgb")
+        return httpx.Response(200, content=buf.getvalue())
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        "satmap_dataset.providers.nls.provider._make_async_client",
+        lambda **kw: httpx.AsyncClient(transport=transport, **kw),
+    )
+
+    cfg_payload = {
+        "year_start": 2018,
+        "year_end": 2018,
+        "bbox": "385000,6675000,387000,6677000",
+        "srs": "EPSG:3067",
+        "provider": "nls",
+        "provider_options": {"api_key": "test-key"},
+        "output_json": str(index_path),  # the SIVL convention: this is the INDEX path
+        "year_availability_output_json": str(tmp_path / "year_availability_report.json"),
+        "download_root": str(tmp_path / "downloads"),
+    }
+    config_path = tmp_path / "cfg.json"
+    config_path.write_text(json.dumps(cfg_payload), encoding="utf-8")
+    result = runner.invoke(app, ["nls-download-json", str(config_path)])
+    assert result.exit_code == 0, result.output
+
+    # Download manifest landed beside the index, not at artifacts/dataset_manifest_download.json.
+    download_manifest_path = tmp_path / "dataset_manifest_download.json"
+    assert download_manifest_path.is_file(), "download manifest must land beside the index"
+    data = json.loads(download_manifest_path.read_text(encoding="utf-8"))
+    assert data["years_included"] == [2018]
+    assert (tmp_path / "downloads" / "2018" / "nls_2018.tif").is_file()
+
+
 def test_nls_run_json_keeps_index_and_download_manifests_separate(monkeypatch, tmp_path):
     """Regression: run-json must not let download_cfg.output_json overwrite the index manifest."""
     import httpx
