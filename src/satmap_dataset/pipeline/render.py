@@ -384,9 +384,19 @@ def _reproject_asset_to_target_crs(
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as exc:
+        # gdalwarp on a multi-GB COG can produce verbose stderr; tail-truncate
+        # to the last 500 chars so the RuntimeError stays bounded.
+        stderr_text = exc.stderr.strip() if exc.stderr else ""
+        if stderr_text:
+            max_chars = 500
+            if len(stderr_text) > max_chars:
+                stderr_text = "…" + stderr_text[-max_chars:]
+            detail: object = stderr_text
+        else:
+            detail = exc
         raise RuntimeError(
             f"gdalwarp failed reprojecting {src_path} to EPSG:{target_epsg}: "
-            f"{exc.stderr.strip() if exc.stderr else exc}"
+            f"{detail}"
         ) from exc
     return cached
 
