@@ -16,6 +16,7 @@ from satmap_dataset.models import (
     YearStatus,
 )
 from satmap_dataset.pipeline.validator import evaluate_year_policy
+from satmap_dataset.providers.nls import oapif
 from satmap_dataset.providers.nls.auth import resolve_api_key
 from satmap_dataset.providers.nls.wcs import (
     DEFAULT_COVERAGE_ID,
@@ -77,6 +78,23 @@ def _fetch_describe_coverage_xml(
     timeout: float = 60.0,
 ) -> bytes:
     url = build_describe_coverage_url(base_url, coverage_id=coverage_id)
+    headers = {"User-Agent": "satmap_dataset/0.1"}
+    with httpx.Client(timeout=timeout, headers=headers) as client:
+        response = client.get(_with_api_key(url, api_key))
+        response.raise_for_status()
+        return response.content
+
+
+def _fetch_oapif_items_geojson(
+    *,
+    base_url: str,
+    collection: str,
+    bbox: tuple[float, float, float, float],
+    api_key: str,
+    limit: int = 1000,
+    timeout: float = 60.0,
+) -> bytes:
+    url = oapif.build_items_url(base_url, collection=collection, bbox=bbox, limit=limit)
     headers = {"User-Agent": "satmap_dataset/0.1"}
     with httpx.Client(timeout=timeout, headers=headers) as client:
         response = client.get(_with_api_key(url, api_key))
@@ -187,6 +205,8 @@ class NlsProvider:
         options = dict(config.provider_options)
         base_url = str(_option(options, "wcs_url", DEFAULT_WCS_URL))
         coverage_id = str(_option(options, "coverage_id", DEFAULT_COVERAGE_ID))
+        oapif_url = str(_option(options, "oapif_url", oapif.DEFAULT_OAPIF_URL))
+        oapif_collection = str(_option(options, "oapif_collection", oapif.DEFAULT_COLLECTION))
         api_key = resolve_api_key(options, secret_path=Path(".secret"))
 
         try:
@@ -202,20 +222,48 @@ class NlsProvider:
 
         available_years = parse_describe_coverage_years(xml_bytes)
         available_set = set(available_years)
+
+        warnings: list[str] = []
+        try:
+            geojson_bytes = _fetch_oapif_items_geojson(
+                base_url=oapif_url,
+                collection=oapif_collection,
+                bbox=bbox,
+                api_key=api_key,
+            )
+            aoi_years: set[int] = oapif.parse_aoi_years(geojson_bytes)
+            aoi_year_lookup_used = True
+            logger.info("NLS index: AOI has photos for years %s", sorted(aoi_years))
+        except httpx.HTTPError as exc:
+            warnings.append(
+                f"OGC API Features query failed; falling back to coverage-wide year list: {exc}"
+            )
+            aoi_years = set(available_years)
+            aoi_year_lookup_used = False
+            logger.warning("NLS index: OAPIF check failed (%s); will rely on download-time empty filter", exc)
+
         requested_years = config.requested_years
-        years_included = [y for y in requested_years if y in available_set]
+        years_included = [y for y in requested_years if y in aoi_years]
+
+        def _exclude_reason(year: int) -> str:
+            if year not in available_set:
+                return "year_not_in_wcs_describe_coverage"
+            if aoi_year_lookup_used and year not in aoi_years:
+                return "no_orthophoto_for_aoi_at_this_year"
+            return "no_orthophoto_for_aoi_at_this_year"
+
         years_excluded = {
-            y: "year_not_in_wcs_describe_coverage"
-            for y in requested_years
-            if y not in available_set
+            y: _exclude_reason(y) for y in requested_years if y not in aoi_years
         }
+        for excluded_year, reason in years_excluded.items():
+            logger.info("NLS index: year=%s excluded (%s)", excluded_year, reason)
         year_statuses = [
             YearStatus(
                 year=y,
                 typename_exists=(y in available_set),
-                feature_count=1 if y in available_set else 0,
-                status="has_features" if y in available_set else "no_typename",
-                reason=None if y in available_set else "year_not_in_wcs_describe_coverage",
+                feature_count=1 if y in aoi_years else 0,
+                status="has_features" if y in aoi_years else "no_typename",
+                reason=None if y in aoi_years else _exclude_reason(y),
             )
             for y in requested_years
         ]
@@ -239,14 +287,19 @@ class NlsProvider:
             min_years=config.min_years,
         )
         errors = list(policy.errors)
-        warnings = list(policy.warnings)
+        warnings.extend(policy.warnings)
         if not years_included:
-            errors.append("WCS DescribeCoverage returned no years intersecting the requested range.")
+            if aoi_year_lookup_used:
+                errors.append("No NLS orthophoto coverage at this AOI for any requested year.")
+            else:
+                errors.append("WCS DescribeCoverage returned no years intersecting the requested range.")
 
         provider_metadata: dict[str, Any] = {
             "wcs_url": base_url,
             "coverage_id": coverage_id,
             "available_years_in_coverage": available_years,
+            "aoi_years_from_oapif": sorted(aoi_years) if aoi_year_lookup_used else None,
+            "oapif_url": oapif_url if aoi_year_lookup_used else None,
             "native_srs": "EPSG:3067",
             "aoi_cap_meters": WCS_AOI_CAP_METERS,
         }

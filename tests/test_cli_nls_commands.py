@@ -21,8 +21,25 @@ def _fixture_xml() -> bytes:
     ).read_bytes()
 
 
-def test_nls_index_json_invokes_provider(monkeypatch, tmp_path):
+def _fixture_oapif(years: list[int]) -> bytes:
+    import json
+    features = [
+        {"type": "Feature", "id": str(i), "geometry": None,
+         "properties": {"kuvausvuosi": str(year)}}
+        for i, year in enumerate(years)
+    ]
+    return json.dumps({"type": "FeatureCollection", "features": features}).encode("utf-8")
+
+
+def _patch_fetchers(monkeypatch, available_years: list[int]):
     monkeypatch.setattr(nls_provider, "_fetch_describe_coverage_xml", lambda **kw: _fixture_xml())
+    monkeypatch.setattr(
+        nls_provider, "_fetch_oapif_items_geojson", lambda **kw: _fixture_oapif(available_years)
+    )
+
+
+def test_nls_index_json_invokes_provider(monkeypatch, tmp_path):
+    _patch_fetchers(monkeypatch, available_years=[2018, 2019, 2020, 2021, 2022])
     cfg = {
         "year_start": 2018,
         "year_end": 2022,
@@ -53,7 +70,7 @@ def test_nls_run_json_keeps_index_and_download_manifests_separate(monkeypatch, t
     """Regression: run-json must not let download_cfg.output_json overwrite the index manifest."""
     import httpx
 
-    monkeypatch.setattr(nls_provider, "_fetch_describe_coverage_xml", lambda **kw: _fixture_xml())
+    _patch_fetchers(monkeypatch, available_years=[2018, 2019])
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=b"FAKE_TIFF_BYTES")
