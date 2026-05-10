@@ -62,6 +62,17 @@ DEFAULT_TARGET_DAY = 15
 DEFAULT_MAX_CLOUD_COVER_PCT = 20.0
 DEFAULT_NATIVE_GSD_M = 10.0
 
+# stac_host backends. Both serve the sentinel-2-l2a collection.
+STAC_HOST_EARTH_SEARCH = "earth_search"
+STAC_HOST_PLANETARY_COMPUTER = "planetary_computer"
+ALLOWED_STAC_HOSTS = {STAC_HOST_EARTH_SEARCH, STAC_HOST_PLANETARY_COMPUTER}
+
+STAC_URL_BY_HOST = {
+    STAC_HOST_EARTH_SEARCH: "https://earth-search.aws.element84.com/v1/search",
+    STAC_HOST_PLANETARY_COMPUTER: "https://planetarycomputer.microsoft.com/api/stac/v1/search",
+}
+DEFAULT_PLANETARY_COMPUTER_SAS_URL = "https://planetarycomputer.microsoft.com/api/sas/v1/sign"
+
 logger = logging.getLogger("satmap_dataset.sentinel2")
 
 
@@ -75,8 +86,28 @@ def _option(options: dict[str, Any], key: str, env_var: str | None, default: Any
     return default
 
 
+def _resolve_stac_host(options: dict[str, Any]) -> str:
+    host = _option(options, "stac_host", "SATMAP_SENTINEL2_STAC_HOST", STAC_HOST_EARTH_SEARCH)
+    host_value = str(host).strip().lower()
+    if host_value not in ALLOWED_STAC_HOSTS:
+        raise ValueError(
+            f"stac_host must be one of {sorted(ALLOWED_STAC_HOSTS)}, got {host!r}."
+        )
+    return host_value
+
+
+def _default_stac_url_for_host(host: str) -> str:
+    return STAC_URL_BY_HOST.get(host, DEFAULT_STAC_URL)
+
+
 def _resolve_search_options(options: dict[str, Any]) -> stac.StacSearchOptions:
-    url = _option(options, "stac_url", "SATMAP_SENTINEL2_STAC_URL", DEFAULT_STAC_URL)
+    host = _resolve_stac_host(options)
+    url = _option(
+        options,
+        "stac_url",
+        "SATMAP_SENTINEL2_STAC_URL",
+        _default_stac_url_for_host(host),
+    )
     collection_value = _option(
         options,
         "stac_collection",
@@ -137,8 +168,28 @@ def _build_search_query(max_cloud_cover_pct: float | None) -> dict[str, Any] | N
 
 
 def _filename_for_url(url: str, fallback: str) -> str:
+    # SAS-signed Azure URLs may have query strings; basename of the path part
+    # is the right cache filename either way.
     name = Path(urlparse(url).path).name
     return name or fallback
+
+
+async def _sign_planetary_computer_url(
+    client: httpx.AsyncClient, href: str, *, sas_url: str
+) -> str:
+    """Exchange a Microsoft Planetary Computer asset HREF for a SAS-signed URL.
+
+    The MPC returns ``{"href": "<signed url>", "msft:expiry": "..."}``; we
+    just take ``href``. Tokens currently expire in <1 hour, so the call is
+    deferred to download time rather than baked into the index manifest.
+    """
+    response = await client.get(sas_url, params={"href": href})
+    response.raise_for_status()
+    payload = response.json()
+    signed = payload.get("href")
+    if not isinstance(signed, str) or not signed:
+        raise RuntimeError(f"MPC sign endpoint returned no href: {payload!r}")
+    return signed
 
 
 class Sentinel2Provider(Provider):
@@ -150,6 +201,7 @@ class Sentinel2Provider(Provider):
 
     async def _index_async(self, config: IndexConfig) -> tuple[int, Path]:
         options = dict(config.provider_options)
+        stac_host = _resolve_stac_host(options)
         search_options = _resolve_search_options(options)
         bbox = _parse_bbox(config.bbox)
         wgs84_bbox = _bbox_to_wgs84(bbox, config.srs)
@@ -214,6 +266,7 @@ class Sentinel2Provider(Provider):
             target_month=target_month,
             target_day=target_day,
             max_cloud_cover_pct=max_cloud_value,
+            stac_host=stac_host,
         )
         availability = YearAvailabilityReport(
             year_start=config.year_start,
@@ -269,6 +322,7 @@ class Sentinel2Provider(Provider):
         target_month: int,
         target_day: int,
         max_cloud_cover_pct: float | None,
+        stac_host: str = STAC_HOST_EARTH_SEARCH,
     ) -> IndexManifest:
         requested_years = config.requested_years
         year_statuses: list[YearStatus] = []
@@ -367,6 +421,7 @@ class Sentinel2Provider(Provider):
             combined_errors.append("Earth Search returned no usable scenes.")
 
         provider_metadata: dict[str, Any] = {
+            "stac_host": stac_host,
             "stac_url": search_url,
             "stac_collections": collections,
             "target_month": target_month,
@@ -408,6 +463,14 @@ class Sentinel2Provider(Provider):
         index_manifest = IndexManifest.model_validate_json(
             config.index_manifest.read_text(encoding="utf-8")
         )
+        options = dict(config.provider_options)
+        stac_host = _resolve_stac_host(options)
+        sas_url = _option(
+            options,
+            "planetary_computer_sas_url",
+            "SATMAP_SENTINEL2_PLANETARY_COMPUTER_SAS_URL",
+            DEFAULT_PLANETARY_COMPUTER_SAS_URL,
+        )
 
         years_source_map: dict[int, str] = {}
         assets: list[str] = []
@@ -448,10 +511,22 @@ class Sentinel2Provider(Provider):
                             and output_path.stat().st_size > 0
                             and not config.overwrite
                         )
+                        download_url = url
+                        if not ok and stac_host == STAC_HOST_PLANETARY_COMPUTER:
+                            try:
+                                download_url = await _sign_planetary_computer_url(
+                                    client, url, sas_url=str(sas_url)
+                                )
+                            except httpx.HTTPError as exc:
+                                logger.warning("MPC sign failed for %s: %s", url, exc)
+                                async with lock:
+                                    failed.append(url)
+                                queue.task_done()
+                                continue
                         if not ok:
                             ok = await _download_asset_with_retry(
                                 client,
-                                url,
+                                download_url,
                                 output_path,
                                 retries=config.retries,
                                 retry_delay=config.retry_delay,
