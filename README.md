@@ -293,6 +293,84 @@ To enable the annual WMS fallback for years missing from STAC, set
 `years_source_map[year] = "wms_fallback"` so downstream stages know the
 provenance per year.
 
+## Sentinel-2 / Element84 Earth Search provider
+
+A third provider, `sentinel2`, fetches Sentinel-2 L2A scenes from the
+[Element84 Earth Search](https://earth-search.aws.element84.com/v1/) STAC
+API. Unlike the Lantmäteriet and Geoportal flows, Sentinel-2 covers the
+**whole year, all seasons, including winter** at 10 m / px (3-band TCI
+COG). No auth required; assets sit on anonymous S3 (`sentinel-cogs.s3.us-
+west-2.amazonaws.com`).
+
+> Sentinel-2 scenes ship in their native MGRS UTM zone (e.g. EPSG:32633,
+> EPSG:32635). The render stage now reprojects via `gdalwarp` when the
+> source CRS differs from `target_srs`, with a single warp that clips +
+> resamples to the AOI grid in one pass. Install GDAL (`gdalwarp` on
+> PATH) before running cross-CRS jobs.
+
+### Year selection
+
+Sentinel-2 revisits every ~5 days, so each requested year has many
+candidate scenes rather than a single annual capture. The provider picks
+**one representative per year** that minimises the distance from a
+target day-of-year (default Feb 15, suitable for winter pairs vs the
+Lantmäteriet summer renders) and stays under a cloud-cover threshold:
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `provider_options.target_month` | `2` | Target month in DOY distance |
+| `provider_options.target_day` | `15` | Target day in DOY distance |
+| `provider_options.max_cloud_cover_pct` | `25.0` | Drop scenes with `eo:cloud_cover` above this |
+| `provider_options.preferred_asset_key` | `"visual"` | Asset to download (the 10 m TCI COG) |
+
+Set `max_cloud_cover_pct: null` to disable filtering, or move `target_day`
+to mid-July for a leaf-on summer pair.
+
+### Run a winter Kisa scene paired with Lantmäteriet
+
+```bash
+python scripts/merge_json_config.py \
+  --base configs/run/base_sentinel2.json \
+  --override configs/run/locations/kisa_winter.json \
+  --out configs/run/generated/kisa_winter.run.json
+
+python -m satmap_dataset.cli run-json configs/run/generated/kisa_winter.run.json
+```
+
+The output `rendered_kisa_winter/year_<Y>.tiff` lands at the same
+EPSG:3006 grid as the Lantmäteriet summer renders for the same AOI, so
+the two stacks can be loaded together as season-pair training data.
+
+### Run Helsinki in EPSG:3067 (Finland)
+
+```bash
+python scripts/merge_json_config.py \
+  --base configs/run/base_sentinel2.json \
+  --override configs/run/locations/helsinki_winter.json \
+  --out configs/run/generated/helsinki_winter.run.json
+
+python -m satmap_dataset.cli run-json configs/run/generated/helsinki_winter.run.json
+```
+
+### Cross-CRS notes
+
+- The provider warps to whatever `target_srs` you set. EPSG:3006 (Sweden),
+  EPSG:3067 (Finland TM35FIN) and any UTM zone (`EPSG:326NN` / `EPSG:327NN`)
+  are supported out of the box; the `.prj` sidecar is auto-generated for
+  UTM zones.
+- Reprojected source tiles are cached next to the downloaded COG under
+  `_reprojected/<src_stem>__epsg<N>_<sha>.tif` keyed by target_srs +
+  bbox + pixel size, so different AOIs / resolutions don't fight over
+  the same cache file.
+- For a Kisa-sized 2 km AOI the cache footprint is ~240 KB per
+  (year, target CRS).
+
+### Attribution
+
+Sentinel-2 imagery is published under the
+[Copernicus open data licence](https://sentinels.copernicus.eu/web/sentinel/terms-conditions).
+Cite as: *Contains modified Copernicus Sentinel data [year]*.
+
 ## Development checks
 
 ```bash

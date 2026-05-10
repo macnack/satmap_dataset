@@ -45,6 +45,7 @@ def transform_bbox_wgs84_to(
 
 _PROJECTED_DEFS = {
     "EPSG:3006": [
+        # SWEREF 99 TM (Sweden)
         "+proj=tmerc",
         "+lat_0=0",
         "+lon_0=15",
@@ -56,12 +57,26 @@ _PROJECTED_DEFS = {
         "+no_defs",
     ],
     "EPSG:2180": [
+        # ETRS89 / Poland CS92
         "+proj=tmerc",
         "+lat_0=0",
         "+lon_0=19",
         "+k=0.9993",
         "+x_0=500000",
         "+y_0=-5300000",
+        "+ellps=GRS80",
+        "+units=m",
+        "+no_defs",
+    ],
+    "EPSG:3067": [
+        # ETRS89 / TM35FIN (Finland) — same TM parameters as UTM 35N but
+        # GRS80 datum.
+        "+proj=tmerc",
+        "+lat_0=0",
+        "+lon_0=27",
+        "+k=0.9996",
+        "+x_0=500000",
+        "+y_0=0",
         "+ellps=GRS80",
         "+units=m",
         "+no_defs",

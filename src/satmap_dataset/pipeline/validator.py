@@ -213,7 +213,11 @@ def _validate_sidecars(asset_path: Path, target_srs: str) -> list[str]:
                 errors.append(f"World file contains non-numeric values for {asset_path.name}")
 
     expected_srs = target_srs.upper()
-    fallback_markers_by_srs = {"EPSG:2180": ("CS92",), "EPSG:3006": ("SWEREF99 TM",)}
+    fallback_markers_by_srs = {
+        "EPSG:2180": ("CS92",),
+        "EPSG:3006": ("SWEREF99 TM",),
+        "EPSG:3067": ("TM35FIN", "ETRS89"),
+    }
     expected_code: str | None = None
     if expected_srs.startswith("EPSG:"):
         expected_code = expected_srs.split(":", 1)[1]
@@ -308,7 +312,7 @@ def run(config: ValidateConfig) -> tuple[int, Path]:
                 report.passed = False
 
             georef_bbox, epsg = _read_georef_bbox_and_epsg(asset_path)
-            expected_epsg_by_srs = {"EPSG:2180": 2180, "EPSG:3006": 3006}
+            expected_epsg_by_srs = {"EPSG:2180": 2180, "EPSG:3006": 3006, "EPSG:3067": 3067}
             expected_epsg = expected_epsg_by_srs.get(target_srs)
             if expected_epsg is None and _is_utm_epsg(target_srs):
                 try:

@@ -50,6 +50,10 @@ def test_wkt_for_epsg_prefers_static_table_for_known_codes() -> None:
     wkt_2180 = _wkt_for_epsg(2180)
     assert wkt_2180 is not None
     assert "CS92" in wkt_2180
+    wkt_3067 = _wkt_for_epsg(3067)
+    assert wkt_3067 is not None
+    assert "TM35FIN" in wkt_3067
+    assert 'AUTHORITY["EPSG","3067"]' in wkt_3067
 
 
 def test_write_prj_emits_utm_wkt(tmp_path: Path) -> None:

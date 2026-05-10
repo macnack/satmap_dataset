@@ -47,7 +47,21 @@ EPSG_3006_WKT = (
     'AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","3006"]]'
 )
 
-_PROJ_WKT_BY_EPSG = {2180: EPSG_2180_WKT, 3006: EPSG_3006_WKT}
+EPSG_3067_WKT = (
+    'PROJCS["ETRS89 / TM35FIN(E,N)",GEOGCS["ETRS89",'
+    'DATUM["European Terrestrial Reference System 1989",'
+    'SPHEROID["GRS 1980",6378137,298.257222101]],'
+    'PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],'
+    'PROJECTION["Transverse_Mercator"],'
+    'PARAMETER["latitude_of_origin",0],'
+    'PARAMETER["central_meridian",27],'
+    'PARAMETER["scale_factor",0.9996],'
+    'PARAMETER["false_easting",500000],'
+    'PARAMETER["false_northing",0],UNIT["metre",1],'
+    'AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","3067"]]'
+)
+
+_PROJ_WKT_BY_EPSG = {2180: EPSG_2180_WKT, 3006: EPSG_3006_WKT, 3067: EPSG_3067_WKT}
 
 
 def _utm_wkt_for_epsg(code: int) -> str | None:
