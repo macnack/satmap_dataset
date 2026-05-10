@@ -110,10 +110,61 @@ def test_download_drops_empty_no_data_tiles(monkeypatch, tmp_path):
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert data["years_included"] == [2013]
     assert data["years_excluded_with_reason"]["2011"] == "wcs_returned_empty_tile"
-    assert data["provider_metadata"]["empty_years"] == [2011]
+    assert data["provider_metadata"]["dropped_years"]["2011"] == "wcs_returned_empty_tile"
     # The empty tile must not remain on disk.
     assert not (cfg.download_root / "2011" / "nls_2011.tif").exists()
     assert (cfg.download_root / "2013" / "nls_2013.tif").is_file()
+
+
+def test_download_drops_partial_coverage_strips(monkeypatch, tmp_path):
+    """Tiles with non-zero pixels but below the coverage threshold get dropped."""
+    import numpy as np
+    import tifffile
+
+    index_path = _write_index_manifest(tmp_path, [2013, 2014])
+    cfg = DownloadConfig(
+        index_manifest=index_path,
+        download_root=tmp_path / "downloads",
+        provider="nls",
+        provider_options={"api_key": "test-key", "min_coverage_ratio": 0.5},
+        bbox="385000,6675000,387000,6677000",
+        srs="EPSG:3067",
+        output_json=tmp_path / "dataset_manifest_download.json",
+    )
+
+    # 2013: a thin strip of real data along one row, ~1.5% coverage
+    partial = np.zeros((64, 64, 3), dtype=np.uint8)
+    partial[0, :, :] = 200
+    partial_path = tmp_path / "partial.tif"
+    tifffile.imwrite(partial_path, partial, photometric="rgb")
+    # 2014: full coverage
+    full_path = tmp_path / "full.tif"
+    tifffile.imwrite(
+        full_path, np.full((64, 64, 3), 128, dtype=np.uint8), photometric="rgb"
+    )
+    partial_bytes = partial_path.read_bytes()
+    full_bytes = full_path.read_bytes()
+
+    def handler(request):
+        if "2013" in str(request.url):
+            return httpx.Response(200, content=partial_bytes)
+        return httpx.Response(200, content=full_bytes)
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        "satmap_dataset.providers.nls.provider._make_async_client",
+        lambda **kw: httpx.AsyncClient(transport=transport, **kw),
+    )
+
+    exit_code, manifest_path = NlsProvider().download(cfg)
+    assert exit_code == 0
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert data["years_included"] == [2014]
+    assert (
+        data["years_excluded_with_reason"]["2013"]
+        == "wcs_partial_coverage_below_threshold"
+    )
+    assert not (cfg.download_root / "2013" / "nls_2013.tif").exists()
 
 
 def test_download_marks_failed_on_http_error(monkeypatch, tmp_path):

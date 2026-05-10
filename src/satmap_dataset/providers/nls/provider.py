@@ -107,32 +107,57 @@ def _make_async_client(**kwargs: Any) -> httpx.AsyncClient:
 
 
 # NLS WCS returns ~196 KB no-data tiles when an AOI lies outside that year's
-# orthophoto coverage. Real tiles for our 2 km AOI are 40-50 MB. Anything
-# below this threshold is checked with tifffile to confirm it's all-zero.
-_EMPTY_TILE_SIZE_HINT_BYTES = 1_000_000
+# orthophoto coverage. Real tiles for our 2 km AOI are 40-50 MB. We only
+# crack open tifffile for files small enough to plausibly be empty/partial.
+_PARTIAL_TILE_SIZE_HINT_BYTES = 5_000_000
+
+DEFAULT_MIN_COVERAGE_RATIO = 0.5
 
 
-def _is_empty_tile(path: Path) -> bool:
-    """Detect WCS no-data tiles (all bands all zero).
+def _coverage_ratio(path: Path) -> float | None:
+    """Fraction of pixels with at least one non-zero band, or None if unknown.
 
-    Skips files that are clearly large enough to contain real imagery
-    (the size hint), and only opens tifffile on the borderline ones.
-    Errors during inspection conservatively return False so a real tile
-    is never dropped on a parser hiccup.
+    Returns None on parse failures so the caller can decide to keep the file
+    rather than drop it on a transient error.
     """
-    try:
-        if path.stat().st_size > _EMPTY_TILE_SIZE_HINT_BYTES:
-            return False
-    except OSError:
-        return False
     try:
         import tifffile
 
         with tifffile.TiffFile(path) as tif:
             data = tif.pages[0].asarray()
-        return bool(data.size > 0 and int(data.max()) == 0)
     except Exception:
-        return False
+        return None
+    if data.size == 0:
+        return 0.0
+    if data.ndim >= 3:
+        non_zero = (data != 0).any(axis=-1)
+    else:
+        non_zero = data != 0
+    return float(non_zero.mean())
+
+
+def _classify_tile(path: Path, *, min_coverage_ratio: float) -> str | None:
+    """Return a manifest reason string if the tile should be dropped, else None.
+
+    Files larger than the hint are accepted unconditionally (real imagery is
+    always tens of MB). Smaller files are inspected: all-zero tiles are
+    'wcs_returned_empty_tile'; partial-strip tiles below the coverage
+    threshold are 'wcs_partial_coverage_below_threshold'.
+    """
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return None
+    if size > _PARTIAL_TILE_SIZE_HINT_BYTES:
+        return None
+    ratio = _coverage_ratio(path)
+    if ratio is None:
+        return None
+    if ratio == 0.0:
+        return "wcs_returned_empty_tile"
+    if ratio < min_coverage_ratio:
+        return "wcs_partial_coverage_below_threshold"
+    return None
 
 
 async def _download_one(
@@ -378,9 +403,12 @@ class NlsProvider:
 
         assets: list[str] = []
         failed: list[str] = []
-        empty_years: list[int] = []
+        dropped: dict[int, str] = {}
         years_source_map: dict[int, str] = {}
         years_included_effective: list[int] = []
+        min_coverage = float(
+            options.get("min_coverage_ratio", DEFAULT_MIN_COVERAGE_RATIO)
+        )
 
         async with _make_async_client(
             timeout=timeout, limits=limits, headers=headers, follow_redirects=True
@@ -401,23 +429,24 @@ class NlsProvider:
                 if not ok:
                     failed.append(url)
                     continue
-                if _is_empty_tile(output_path):
-                    logger.info("NLS download: year=%s returned no-data tile, dropping", year)
+                drop_reason = _classify_tile(output_path, min_coverage_ratio=min_coverage)
+                if drop_reason is not None:
+                    logger.info("NLS download: year=%s dropping (%s)", year, drop_reason)
                     try:
                         output_path.unlink()
                         # Remove the now-empty year directory; ignore if not empty.
                         output_path.parent.rmdir()
                     except OSError:
                         pass
-                    empty_years.append(year)
+                    dropped[year] = drop_reason
                     continue
                 assets.append(str(output_path))
                 years_source_map[year] = "wcs"
                 years_included_effective.append(year)
 
         years_excluded = dict(index_manifest.years_excluded_with_reason)
-        for year in empty_years:
-            years_excluded[year] = "wcs_returned_empty_tile"
+        for year, reason in dropped.items():
+            years_excluded[year] = reason
 
         manifest = DatasetManifest(
             provider="nls",
@@ -441,10 +470,14 @@ class NlsProvider:
             passed=bool(assets) and not failed,
             notes=(
                 f"provider=nls downloaded={len(assets)} failed={len(failed)} "
-                f"empty={len(empty_years)}"
+                f"dropped={len(dropped)}"
             ),
             run_parameters=config.model_dump(mode="json"),
-            provider_metadata={"failed_urls": failed, "empty_years": sorted(empty_years)},
+            provider_metadata={
+                "failed_urls": failed,
+                "dropped_years": dropped,
+                "min_coverage_ratio": min_coverage,
+            },
         )
         config.output_json.parent.mkdir(parents=True, exist_ok=True)
         config.output_json.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
