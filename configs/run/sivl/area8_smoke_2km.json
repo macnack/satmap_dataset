@@ -1,0 +1,16 @@
+{
+  "year_start": 2008,
+  "year_end": 2025,
+  "bbox": "679752,6615460,681752,6617460",
+  "srs": "EPSG:3006",
+  "strict_years": false,
+  "min_years": 1,
+  "provider": "lantmateriet",
+  "mode": "stac",
+  "provider_options": {
+    "year_policy": "exact_only"
+  },
+  "output_json": "artifacts_sivl_area8_smoke/index_manifest.json",
+  "year_availability_output_json": "artifacts_sivl_area8_smoke/year_availability_report.json",
+  "download_root": "downloads_sivl_area8_smoke"
+}
