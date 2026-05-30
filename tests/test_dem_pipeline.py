@@ -210,3 +210,38 @@ def test_run_wires_retry_delay_into_retry_policy(tmp_path, monkeypatch):
     assert code == 0
     assert captured["retry_policy"].max_attempts == 4
     assert captured["retry_policy"].backoff_seconds == 2.5
+
+
+def test_coverage_is_empty_detects_all_nodata(tmp_path, monkeypatch):
+    import numpy as np
+    import tifffile
+
+    arr = np.full((8, 8), -9999.0, dtype="float32")
+    path = tmp_path / "allnodata.tif"
+    tifffile.imwrite(str(path), arr)
+    # nodata sentinel reported out-of-band so the test is independent of tag I/O
+    monkeypatch.setattr(dem, "_read_nodata", lambda p: -9999.0)
+    assert dem._coverage_is_empty(path) is True
+
+
+def test_coverage_is_empty_false_when_some_valid(tmp_path, monkeypatch):
+    import numpy as np
+    import tifffile
+
+    arr = np.full((8, 8), -9999.0, dtype="float32")
+    arr[0, 0] = 123.5  # one real elevation pixel
+    path = tmp_path / "partial.tif"
+    tifffile.imwrite(str(path), arr)
+    monkeypatch.setattr(dem, "_read_nodata", lambda p: -9999.0)
+    assert dem._coverage_is_empty(path) is False
+
+
+def test_read_nodata_roundtrip(tmp_path):
+    import numpy as np
+    import tifffile
+
+    arr = np.zeros((4, 4), dtype="float32")
+    path = tmp_path / "tagged.tif"
+    # GDAL_NODATA is TIFF tag 42113, an ASCII string
+    tifffile.imwrite(str(path), arr, extratags=[(42113, "s", 0, "-9999", True)])
+    assert dem._read_nodata(path) == -9999.0

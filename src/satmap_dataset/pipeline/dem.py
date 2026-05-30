@@ -115,6 +115,20 @@ def _raster_dims(path: Path) -> tuple[int | None, int | None]:
         return (None, None)
 
 
+def _read_nodata(path: Path) -> float | None:
+    """Read the GDAL_NODATA value (TIFF tag 42113) if present."""
+    try:
+        import tifffile
+
+        with tifffile.TiffFile(str(path)) as tif:
+            tag = tif.pages[0].tags.get(42113)
+            if tag is not None and tag.value not in (None, ""):
+                return float(str(tag.value).strip())
+    except Exception:  # best-effort; absence is fine
+        return None
+    return None
+
+
 def _coverage_is_empty(path: Path) -> bool:
     try:
         import numpy as np
@@ -129,6 +143,10 @@ def _coverage_is_empty(path: Path) -> bool:
     finite = np.isfinite(arr)
     if not finite.any():
         return True
+    nodata = _read_nodata(path)
+    if nodata is not None:
+        valid = finite & (arr != nodata)
+        return not bool(valid.any())
     return False
 
 
@@ -187,6 +205,7 @@ async def _run_async(config: DemConfig) -> tuple[int, Path]:
                 else:
                     asset.native_path = str(native_path)
                     asset.native_width, asset.native_height = _raster_dims(native_path)
+                    asset.nodata = _read_nodata(native_path)
                     if grid is not None:
                         aligned_path = (
                             config.dem_root / "aligned" / f"{product}_{config.vertical_datum}.tif"
