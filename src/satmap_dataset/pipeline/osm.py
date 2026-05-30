@@ -7,7 +7,8 @@ from pathlib import Path
 
 from satmap_dataset.config import OsmConfig
 from satmap_dataset.models import OsmCategoryAsset, OsmManifest, OsmYearAsset
-from satmap_dataset.osm import ohsome_client, rasterize
+from satmap_dataset.osm import overpass_client, rasterize
+from satmap_dataset.osm.ohsome_client import bbox_epsg2180_to_wgs84
 
 logger = logging.getLogger("satmap_dataset.osm")
 
@@ -73,10 +74,11 @@ async def _run_async(config: OsmConfig) -> tuple[int, Path]:
 
     target_width, target_height = _read_grid(config)
     target_bbox = tuple(float(x) for x in config.bbox.split(","))
-    bbox_wgs84 = ohsome_client.bbox_epsg2180_to_wgs84(config.bbox)
+    bbox_wgs84 = bbox_epsg2180_to_wgs84(config.bbox)
     retry_policy = RetryPolicy(
         max_attempts=config.retries, backoff_seconds=config.retry_delay
     )
+    overpass_url = config.ohsome_url or overpass_client._DEFAULT_OVERPASS_URL
 
     for year in sorted(year_date_map.keys()):
         snapshot_date = year_date_map[year]
@@ -84,7 +86,6 @@ async def _run_async(config: OsmConfig) -> tuple[int, Path]:
         year_asset = OsmYearAsset(year=year, snapshot_date=normalized)
 
         for category in config.categories:
-            filter_str = ohsome_client.CATEGORY_FILTERS[category]
             raster_path = config.osm_root / f"year_{year}_{category}.tif"
 
             if raster_path.exists() and not config.overwrite:
@@ -97,11 +98,11 @@ async def _run_async(config: OsmConfig) -> tuple[int, Path]:
                 await asyncio.sleep(random.uniform(config.sleep_min, config.sleep_max))
 
             try:
-                geojson = await ohsome_client.get_elements_geometry(
+                geojson = await overpass_client.get_elements_geometry(
                     bbox_wgs84,
-                    filter_str,
+                    category,
                     normalized,
-                    ohsome_url=config.ohsome_url,
+                    overpass_url=overpass_url,
                     timeout=config.timeout,
                     retry_policy=retry_policy,
                 )

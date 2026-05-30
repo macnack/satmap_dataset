@@ -47,21 +47,18 @@ def test_osm_manifest_round_trip_with_null_rasters():
 def _patch_seams(monkeypatch, *, features_by_cat=None):
     counts = features_by_cat or {"buildings": 5, "highways": 3, "landuse": 2, "water": 1}
 
-    async def _fake_fetch(bbox, filter_str, snapshot_date, **kwargs):
-        for cat, flt in osm_pipeline.ohsome_client.CATEGORY_FILTERS.items():
-            if flt == filter_str:
-                n = counts.get(cat, 0)
-                return {
-                    "type": "FeatureCollection",
-                    "features": [{"type": "Feature", "geometry": None, "properties": {}} for _ in range(n)],
-                }
-        return {"type": "FeatureCollection", "features": []}
+    async def _fake_fetch(bbox, category, snapshot_date, **kwargs):
+        n = counts.get(category, 0)
+        return {
+            "type": "FeatureCollection",
+            "features": [{"type": "Feature", "geometry": None, "properties": {}} for _ in range(n)],
+        }
 
     def _fake_rasterize(geojson, out_path, *, target_bbox, target_width, target_height, target_srs="EPSG:2180"):
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_bytes(b"RASTER")
 
-    monkeypatch.setattr(osm_pipeline.ohsome_client, "get_elements_geometry", _fake_fetch)
+    monkeypatch.setattr(osm_pipeline.overpass_client, "get_elements_geometry", _fake_fetch)
     monkeypatch.setattr(osm_pipeline.rasterize, "rasterize_geojson_to_file", _fake_rasterize)
 
 
@@ -133,11 +130,11 @@ def test_run_zero_features_no_raster(tmp_path, monkeypatch):
 def test_run_uses_acquisition_date_not_jan1(tmp_path, monkeypatch):
     captured_dates = []
 
-    async def _spy_fetch(bbox, filter_str, snapshot_date, **kwargs):
+    async def _spy_fetch(bbox, category, snapshot_date, **kwargs):
         captured_dates.append(snapshot_date)
         return {"type": "FeatureCollection", "features": []}
 
-    monkeypatch.setattr(osm_pipeline.ohsome_client, "get_elements_geometry", _spy_fetch)
+    monkeypatch.setattr(osm_pipeline.overpass_client, "get_elements_geometry", _spy_fetch)
 
     render = _make_render_manifest(tmp_path, years_dates={2022: "2022-04-29"})
     cfg = OsmConfig(
@@ -157,11 +154,11 @@ def test_run_uses_acquisition_date_not_jan1(tmp_path, monkeypatch):
 def test_run_reuses_existing_raster(tmp_path, monkeypatch):
     fetch_calls = []
 
-    async def _spy_fetch(bbox, filter_str, snapshot_date, **kwargs):
-        fetch_calls.append(filter_str)
+    async def _spy_fetch(bbox, category, snapshot_date, **kwargs):
+        fetch_calls.append(category)
         return {"type": "FeatureCollection", "features": []}
 
-    monkeypatch.setattr(osm_pipeline.ohsome_client, "get_elements_geometry", _spy_fetch)
+    monkeypatch.setattr(osm_pipeline.overpass_client, "get_elements_geometry", _spy_fetch)
 
     existing = tmp_path / "osm_x" / "year_2022_buildings.tif"
     existing.parent.mkdir(parents=True)
