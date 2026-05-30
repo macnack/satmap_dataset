@@ -180,3 +180,19 @@ def test_extract_if_zip_no_raster_raises(tmp_path):
         zf.writestr("notes.txt", "nothing")
     with pytest.raises(RuntimeError):
         dem_skorowidz._extract_if_zip(z, tmp_path)
+
+
+def test_run_swaps_bbox_axes_for_epsg2180_wfs_query(tmp_path, monkeypatch):
+    _patch(monkeypatch, tiles_by_year={2012: {"g1": "u1"}})
+    captured = {}
+
+    async def _capture(product, datum, year, bbox, srs, *, year_to_typename, options=None, timeout=45.0, retry_policy=None):
+        captured["bbox"] = bbox
+        status = YearStatus(year=year, typename_exists=True, feature_count=1, status="has_features")
+        return status, {"g1": "u1"}, {}, {}
+
+    monkeypatch.setattr(dem_skorowidz.dem_skorowidz_client, "tiles_for_year", _capture)
+    cfg = _cfg(tmp_path, bbox="348967.353,508503.706,349967.353,509503.706")
+    dem_skorowidz.run(cfg)
+    # EPSG:2180 WFS expects (ymin,xmin,ymax,xmax)
+    assert captured["bbox"] == "508503.706,348967.353,509503.706,349967.353"

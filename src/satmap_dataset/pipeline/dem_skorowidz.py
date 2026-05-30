@@ -131,6 +131,14 @@ async def _run_async(config: DemConfig) -> tuple[int, Path]:
     bbox = dem._parse_bbox(config.bbox)
     requested = config.requested_years
     options = dict(config.provider_options)
+    # The GUGiK NMT/NMPT skorowidz WFS expects the BBOX in the CRS-defined axis
+    # order, which for EPSG:2180 is (Y, X). Querying in x,y order returns the
+    # wrong tiles (or none). Swap by default for EPSG:2180; overridable.
+    swap_axes = bool(
+        options.get("wfs_swap_bbox_axes", config.srs.strip().upper() == "EPSG:2180")
+    )
+    xmin, ymin, xmax, ymax = bbox
+    query_bbox = f"{ymin},{xmin},{ymax},{xmax}" if swap_axes else config.bbox
 
     product_assets: list[DemProductAsset] = []
     years_skipped: dict[int, str] = {}
@@ -161,7 +169,7 @@ async def _run_async(config: DemConfig) -> tuple[int, Path]:
                 )
                 try:
                     _status, tiles, _bb, _acq = await dem_skorowidz_client.tiles_for_year(
-                        product, datum, year, config.bbox, config.srs,
+                        product, datum, year, query_bbox, config.srs,
                         year_to_typename=year_to_typename, options=options,
                         timeout=config.timeout, retry_policy=retry_policy,
                     )
