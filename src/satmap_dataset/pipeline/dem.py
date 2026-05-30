@@ -247,4 +247,8 @@ async def _run_async(config: DemConfig) -> tuple[int, Path]:
 
 
 def run(config: DemConfig) -> tuple[int, Path]:
+    if config.transport == "skorowidz":
+        from satmap_dataset.pipeline import dem_skorowidz
+
+        return dem_skorowidz.run(config)
     return asyncio.run(_run_async(config))

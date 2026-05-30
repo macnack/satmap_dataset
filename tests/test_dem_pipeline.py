@@ -245,3 +245,34 @@ def test_read_nodata_roundtrip(tmp_path):
     # GDAL_NODATA is TIFF tag 42113, an ASCII string
     tifffile.imwrite(str(path), arr, extratags=[(42113, "s", 0, "-9999", True)])
     assert dem._read_nodata(path) == -9999.0
+
+
+def test_run_dispatches_skorowidz(tmp_path, monkeypatch):
+    called = {}
+
+    def _fake_skoro_run(config):
+        called["config"] = config
+        return (0, tmp_path / "m.json")
+
+    monkeypatch.setattr("satmap_dataset.pipeline.dem_skorowidz.run", _fake_skoro_run)
+    cfg = DemConfig(
+        bbox="0,0,10,10", transport="skorowidz", year_start=2012, year_end=2012,
+        dem_root=tmp_path / "dem_x", output_json=tmp_path / "dem_x" / "m.json",
+    )
+    code, _ = dem.run(cfg)
+    assert code == 0
+    assert called["config"] is cfg
+
+
+def test_run_wcs_path_not_dispatched_to_skorowidz(tmp_path, monkeypatch):
+    _patch_seams(monkeypatch)  # defined earlier in this file (WCS seams)
+    monkeypatch.setattr(
+        "satmap_dataset.pipeline.dem_skorowidz.run",
+        lambda config: (_ for _ in ()).throw(AssertionError("must not call skorowidz")),
+    )
+    cfg = DemConfig(
+        bbox="0,0,100,100", products=["nmt"], align_to_render=False,
+        dem_root=tmp_path / "dem_x", output_json=tmp_path / "dem_x" / "dem_manifest.json",
+    )
+    code, _ = dem.run(cfg)
+    assert code == 0  # WCS path ran, skorowidz NOT called
