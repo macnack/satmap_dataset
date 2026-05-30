@@ -378,6 +378,13 @@ def _build_dem_availability_config_from_base_and_location(*, base_json: Path, lo
     location_payload = _load_params_json_dict(location_json)
     merged: dict[str, object] = dict(base_payload)
     merged.update(location_payload)
+    # Availability is a discovery tool: report ALL advertised years by default.
+    # base.json's year_start/year_end scope the download/run pipeline, not discovery,
+    # so ignore them here unless the LOCATION file sets an explicit range.
+    if "year_start" not in location_payload:
+        merged.pop("year_start", None)
+    if "year_end" not in location_payload:
+        merged.pop("year_end", None)
     repo_root = base_json.resolve().parents[2] if len(base_json.resolve().parents) >= 3 else Path.cwd().resolve()
     merged = _apply_location_paths_policy(merged, repo_root)
     merged = _resolve_json_center_bbox(merged, required=True)

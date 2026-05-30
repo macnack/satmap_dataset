@@ -49,3 +49,26 @@ def test_dem_availability_json_bad_config_exit_2(tmp_path):
     params.write_text(json.dumps({"bbox": "10,10,0,0"}))
     result = runner.invoke(app, ["dem-availability-json", str(params)])
     assert result.exit_code == 2
+
+
+def test_dem_availability_builder_ignores_base_year_range(tmp_path):
+    base = tmp_path / "base.json"
+    base.write_text(json.dumps({"year_start": 2014, "year_end": 2025}))
+    loc = tmp_path / "location_x.json"
+    loc.write_text(json.dumps({"location_name": "Test", "center_lat": 52.4, "center_lon": 16.9, "square_km": 1.0}))
+    cfg = _build_dem_availability_config_from_base_and_location(base_json=base, location_json=loc)
+    assert cfg.year_start is None and cfg.year_end is None  # base range ignored for discovery
+    assert cfg.requested_years is None
+
+
+def test_dem_availability_builder_honors_location_year_range(tmp_path):
+    base = tmp_path / "base.json"
+    base.write_text(json.dumps({"year_start": 2014, "year_end": 2025}))
+    loc = tmp_path / "location_x.json"
+    loc.write_text(json.dumps({
+        "location_name": "Test", "center_lat": 52.4, "center_lon": 16.9, "square_km": 1.0,
+        "year_start": 2020, "year_end": 2022,
+    }))
+    cfg = _build_dem_availability_config_from_base_and_location(base_json=base, location_json=loc)
+    assert cfg.year_start == 2020 and cfg.year_end == 2022
+    assert cfg.requested_years == [2020, 2021, 2022]
