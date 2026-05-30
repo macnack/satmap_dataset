@@ -61,12 +61,19 @@ def _merge_tiles(tiles: list[Path], out_path: Path) -> None:
             "gdal_translate). Install GDAL or reduce the AOI below max_request_px."
         )
     vrt_path = out_path.with_suffix(".vrt")
-    subprocess.run([gdalbuildvrt, str(vrt_path), *[str(t) for t in tiles]], check=True)
-    subprocess.run(
-        [gdal_translate, "-co", "COMPRESS=DEFLATE", str(vrt_path), str(out_path)],
-        check=True,
-    )
-    vrt_path.unlink(missing_ok=True)
+    try:
+        subprocess.run(
+            [gdalbuildvrt, str(vrt_path), *[str(t) for t in tiles]],
+            check=True, capture_output=True, text=True,
+        )
+        subprocess.run(
+            [gdal_translate, "-co", "COMPRESS=DEFLATE", str(vrt_path), str(out_path)],
+            check=True, capture_output=True, text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"GDAL merge failed: {(exc.stderr or '')[-500:]}") from exc
+    finally:
+        vrt_path.unlink(missing_ok=True)
 
 
 def _align_to_grid(
@@ -82,16 +89,19 @@ def _align_to_grid(
         )
     xmin, ymin, xmax, ymax = target_bbox
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            gdalwarp, "-t_srs", srs,
-            "-te", str(xmin), str(ymin), str(xmax), str(ymax),
-            "-ts", str(target_width), str(target_height),
-            "-r", resample, "-co", "COMPRESS=DEFLATE", "-overwrite",
-            str(native), str(out_path),
-        ],
-        check=True,
-    )
+    try:
+        subprocess.run(
+            [
+                gdalwarp, "-t_srs", srs,
+                "-te", str(xmin), str(ymin), str(xmax), str(ymax),
+                "-ts", str(target_width), str(target_height),
+                "-r", resample, "-co", "COMPRESS=DEFLATE", "-overwrite",
+                str(native), str(out_path),
+            ],
+            check=True, capture_output=True, text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"gdalwarp alignment failed: {(exc.stderr or '')[-500:]}") from exc
 
 
 def _raster_dims(path: Path) -> tuple[int | None, int | None]:
@@ -112,6 +122,7 @@ def _coverage_is_empty(path: Path) -> bool:
 
         arr = np.asarray(tifffile.imread(str(path)), dtype="float64")
     except Exception:  # cannot read -> don't block
+        logger.warning("Could not read %s for emptiness check; treating as non-empty.", path)
         return False
     if arr.size == 0:
         return True
