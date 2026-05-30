@@ -75,3 +75,81 @@ def _formats_from_urls(urls: list[str]) -> list[str]:
         elif name.endswith((".tif", ".tiff")):
             found.add("tif")
     return sorted(found)
+
+
+def _swap_bbox(bbox: tuple[float, float, float, float]) -> str:
+    xmin, ymin, xmax, ymax = bbox
+    return f"{ymin},{xmin},{ymax},{xmax}"
+
+
+async def _run_async(config: DemAvailabilityConfig) -> tuple[int, Path]:
+    retry_policy = RetryPolicy(max_attempts=config.retries, backoff_seconds=config.retry_delay)
+    options = dict(config.provider_options)
+    bbox = _parse_bbox(config.bbox)
+    swap = bool(options.get("wfs_swap_bbox_axes", config.srs.strip().upper() == "EPSG:2180"))
+    query_bbox = _swap_bbox(bbox) if swap else config.bbox
+    cov_aoi = _parse_bbox(query_bbox)  # coverage computed in the same (query) space
+    year_filter = config.requested_years  # None = all advertised
+
+    entries: list[DemAvailabilityEntry] = []
+    errors: dict[str, str] = {}
+
+    for product in config.products:
+        for datum in config.datums:
+            combo = f"{product}|{datum}"
+            try:
+                year_to_typename = await dem_skorowidz_client.year_typenames(
+                    product, datum, options, timeout=config.timeout, retry_policy=retry_policy
+                )
+            except Exception as exc:  # noqa: BLE001 - record and continue
+                errors[combo] = str(exc)
+                continue
+            years = sorted(year_to_typename)
+            if year_filter is not None:
+                years = [y for y in years if y in set(year_filter)]
+            for year in years:
+                try:
+                    _status, tiles, tile_bboxes, tile_acq = await dem_skorowidz_client.tiles_for_year(
+                        product, datum, year, query_bbox, config.srs,
+                        year_to_typename=year_to_typename, options=options,
+                        timeout=config.timeout, retry_policy=retry_policy,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    errors[f"{combo}|{year}"] = str(exc)
+                    continue
+                pct = _coverage_pct(cov_aoi, [tuple(v) for v in tile_bboxes.values()])
+                dates = sorted({
+                    str(meta.get("acquisition_date"))
+                    for meta in tile_acq.values()
+                    if meta.get("acquisition_date")
+                })
+                entries.append(
+                    DemAvailabilityEntry(
+                        product=product, datum=datum, year=year,
+                        godla=sorted(tiles.keys()), tile_count=len(tiles),
+                        formats=_formats_from_urls(list(tiles.values())),
+                        coverage=_classify(pct), coverage_pct=pct,
+                        acquisition_dates=dates,
+                    )
+                )
+
+    full_options = [
+        {"product": e.product, "datum": e.datum, "year": e.year}
+        for e in entries if e.coverage == "full"
+    ]
+    report = DemAvailabilityReport(
+        provider="geoportal", aoi_bbox=config.bbox, srs=config.srs,
+        entries=entries, errors=errors, full_coverage_options=full_options,
+        run_parameters=config.model_dump(mode="json"),
+    )
+    config.output_json.parent.mkdir(parents=True, exist_ok=True)
+    config.output_json.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+    logger.info(
+        "DEM availability: entries=%s full=%s errors=%s",
+        len(entries), len(full_options), len(errors),
+    )
+    return 0, config.output_json
+
+
+def run(config: DemAvailabilityConfig) -> tuple[int, Path]:
+    return asyncio.run(_run_async(config))

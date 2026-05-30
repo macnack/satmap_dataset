@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from satmap_dataset.models import DemAvailabilityEntry, DemAvailabilityReport
 
 
@@ -78,3 +80,58 @@ def test_formats_from_urls():
         "https://x/e_M-1-5.tif",
     ]
     assert dav._formats_from_urls(urls) == ["asc", "tif", "xyz", "xyz.zip", "zip"]
+
+
+import json
+from satmap_dataset.models import YearStatus
+
+
+def _patch_av(monkeypatch, *, years_by_combo, tiles_for):
+    async def _yt(product, datum, options=None, *, timeout=45.0, retry_policy=None):
+        key = f"{product}|{datum}"
+        if isinstance(years_by_combo.get(key), Exception):
+            raise years_by_combo[key]
+        return {y: f"gugik:Skorowidz{product.upper()}{y}" for y in years_by_combo.get(key, [])}
+
+    async def _tf(product, datum, year, bbox, srs, *, year_to_typename, options=None, timeout=45.0, retry_policy=None):
+        tiles, bboxes = tiles_for(product, datum, year)
+        status = YearStatus(year=year, typename_exists=True, feature_count=len(tiles),
+                            status="has_features" if tiles else "zero_features")
+        acq = {tid: {"acquisition_date": f"{year}-03-01"} for tid in tiles}
+        return status, dict(tiles), dict(bboxes), acq
+
+    monkeypatch.setattr(dav.dem_skorowidz_client, "year_typenames", _yt)
+    monkeypatch.setattr(dav.dem_skorowidz_client, "tiles_for_year", _tf)
+
+
+def test_run_builds_report(tmp_path, monkeypatch):
+    years = {
+        "nmt|evrf2007": [2019],
+        "nmpt|evrf2007": [2019, 2024],
+        "nmt|kron86": RuntimeError("caps down"),
+        "nmpt|kron86": [],
+    }
+
+    def tiles_for(product, datum, year):
+        if product == "nmpt" and datum == "evrf2007" and year == 2024:
+            return {"g1": "https://x/a_g1.asc"}, {"g1": [0.0, 0.0, 100.0, 100.0]}
+        if product == "nmpt" and datum == "evrf2007" and year == 2019:
+            return {"g2": "https://x/a_g2.asc"}, {"g2": [0.0, 0.0, 50.0, 100.0]}
+        if product == "nmt" and datum == "evrf2007" and year == 2019:
+            return {"g3": "https://x/a_g3.xyz.zip"}, {"g3": [0.0, 0.0, 100.0, 100.0]}
+        return {}, {}
+
+    _patch_av(monkeypatch, years_by_combo=years, tiles_for=tiles_for)
+    from satmap_dataset.config import DemAvailabilityConfig
+    cfg = DemAvailabilityConfig(bbox="0,0,100,100", output_json=tmp_path / "av.json")
+    code, path = dav.run(cfg)
+    assert code == 0
+    report = DemAvailabilityReport.model_validate_json(Path(path).read_text())
+    by = {(e.product, e.datum, e.year): e for e in report.entries}
+    assert by[("nmpt", "evrf2007", 2024)].coverage == "full"
+    assert by[("nmpt", "evrf2007", 2024)].formats == ["asc"]
+    assert by[("nmpt", "evrf2007", 2019)].coverage == "partial"
+    assert by[("nmt", "evrf2007", 2019)].formats == ["xyz.zip"]
+    assert report.errors["nmt|kron86"].startswith("caps")
+    assert {"product": "nmpt", "datum": "evrf2007", "year": 2024} in report.full_coverage_options
+    assert by[("nmpt", "evrf2007", 2024)].acquisition_dates == ["2024-03-01"]
