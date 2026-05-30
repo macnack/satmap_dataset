@@ -62,3 +62,12 @@ def test_dem_json_command_bad_config_exit_2(tmp_path):
     params.write_text(json.dumps({"bbox": "10,10,0,0"}))  # invalid order
     result = runner.invoke(app, ["dem-json", str(params)])
     assert result.exit_code == 2
+
+
+def test_manage_roots_knows_dem_kind(tmp_path):
+    import scripts.manage_location_roots as mlr
+
+    assert "dem" in mlr.KINDS
+    payload = {"location_name": "Poznań"}
+    path = mlr._path_for_kind(payload, "dem", tmp_path)
+    assert str(path).endswith("dem_poznan")

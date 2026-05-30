@@ -73,7 +73,7 @@ outside the sandbox.
 For each requested product:
 1. `split_bbox` → fetch each sub-bbox via `wcs_client.get_coverage`, writing temp tiles.
 2. **Merge** tiles → `dem_<slug>/native/{product}_{datum}.tif` (float32, EPSG:2180,
-   nodata preserved) + `.prj` sidecar. Single-tile AOIs skip merge.
+   nodata preserved). Single-tile AOIs skip merge.
 3. If `align_to_render`: **resample** the native raster to the ortho render grid →
    `dem_<slug>/aligned/{product}_{datum}.tif`. The target extent/size comes from
    `dataset_manifest_render.json` when present (exact pixel alignment with the RGB
@@ -148,8 +148,8 @@ new output root alongside `downloads_`/`rendered_`/`artifacts_`.
 
 ```
 dem_<slug>/
-  native/   {nmt,nmpt}_{evrf2007|kron86}.tif   + .prj   # authoritative 1 m
-  aligned/  {nmt,nmpt}_{evrf2007|kron86}.tif   + .prj   # matches render grid
+  native/   {nmt,nmpt}_{evrf2007|kron86}.tif            # authoritative 1 m (CRS embedded by GDAL)
+  aligned/  {nmt,nmpt}_{evrf2007|kron86}.tif            # matches render grid (CRS embedded by GDAL)
   dem_manifest.json
 ```
 

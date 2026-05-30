@@ -69,3 +69,11 @@ roots-move locations_dir="" target_dir="./archive" kind="all" execute="":
 # Delete roots for a locations dir (dry-run by default).
 roots-delete locations_dir="" kind="all" execute="":
   root="${SATMAP_LOCATIONS_ROOT:-./configs/run}"; dir="{{locations_dir}}"; dir="${dir#locations_dir=}"; kind_value="{{kind}}"; kind_value="${kind_value#kind=}"; run="{{execute}}"; run="${run#execute=}"; if [[ -n "$dir" ]]; then if [[ "$dir" != /* && "$dir" != */* ]]; then raw="$dir"; dir="$root/$raw"; if [[ ! -d "$dir" && "$raw" == location_* && -d "$root/locations_${raw#location_}" ]]; then dir="$root/locations_${raw#location_}"; fi; fi; else dir="${SATMAP_LOCATIONS_DIR:-$root/locations}"; fi; extra=""; if [[ "$run" == "1" || "$run" == "true" || "$run" == "--execute" ]]; then extra="--execute"; fi; python scripts/manage_location_roots.py delete --locations-dir "$dir" --kind "$kind_value" $extra
+
+# Download ISOK elevation (NMT/NMPT) for a single location
+dem-location-json location_json:
+  python -m satmap_dataset.cli dem-location-json {{location_json}}
+
+# Download ISOK elevation for all locations in the default dir
+dem-all-json:
+  python -m satmap_dataset.cli dem-all-location-json
