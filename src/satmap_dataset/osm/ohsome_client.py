@@ -43,7 +43,7 @@ async def get_elements_geometry(
         "bboxes": bbox_wgs84,
         "filter": filter_str,
         "time": normalized_time,
-        "clipGeometry": "true",
+        "clipGeometry": "false",
     }
     response = await request_with_retry(
         "POST",

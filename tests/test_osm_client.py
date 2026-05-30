@@ -48,7 +48,7 @@ def test_get_elements_geometry_builds_correct_post(monkeypatch):
     assert captured["data"]["bboxes"] == "16.778,52.421,16.792,52.430"
     assert captured["data"]["filter"] == "building=* and type:way"
     assert captured["data"]["time"] == "2022-04-29T00:00:00Z"
-    assert captured["data"]["clipGeometry"] == "true"
+    assert captured["data"]["clipGeometry"] == "false"
 
 
 def test_get_elements_geometry_normalizes_time_with_z(monkeypatch):
