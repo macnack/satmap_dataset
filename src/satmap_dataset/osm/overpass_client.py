@@ -6,9 +6,10 @@ from satmap_dataset.geoportal.http import RetryPolicy, request_with_retry
 
 CATEGORY_QUERIES: dict[str, str] = {
     "buildings": 'way["building"]',
-    "highways": 'way["highway"]',
-    "landuse": 'way["landuse"]',
-    "water": '(way["natural"="water"]; way["waterway"];)',
+    "roads":     'way["highway"~"motorway|trunk|primary|secondary|tertiary|residential|service|living_street|unclassified"]',
+    "paths":     'way["highway"~"footway|cycleway|path|steps|pedestrian|track"]',
+    "green":     '(way["leisure"~"park|garden|pitch|playground|golf_course"]; way["natural"~"wood|scrub|grass|meadow"]; way["landuse"~"forest|meadow|grass|recreation_ground"];)',
+    "water":     '(way["natural"="water"]; way["waterway"];)',
 }
 
 _DEFAULT_OVERPASS_URL = "https://overpass.kumi.systems/api/interpreter"

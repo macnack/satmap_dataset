@@ -471,7 +471,7 @@ class DemAvailabilityConfig(BaseModel):
         return list(range(self.year_start, self.year_end + 1))
 
 
-_OSM_ALLOWED_CATEGORIES: frozenset[str] = frozenset({"buildings", "highways", "landuse", "water"})
+_OSM_ALLOWED_CATEGORIES: frozenset[str] = frozenset({"buildings", "roads", "paths", "green", "water"})
 
 
 class OsmConfig(BaseModel):
@@ -481,7 +481,7 @@ class OsmConfig(BaseModel):
     output_json: Path = Path("osm/osm_manifest.json")
     render_manifest: Path | None = None
     year_date_map: dict[int, str] | None = None
-    categories: list[str] = Field(default_factory=lambda: ["buildings", "highways", "landuse", "water"])
+    categories: list[str] = Field(default_factory=lambda: ["buildings", "roads", "paths", "green", "water"])
     target_width: int | None = Field(default=None, ge=1)
     target_height: int | None = Field(default=None, ge=1)
     overpass_url: str = "https://overpass.kumi.systems/api/interpreter"

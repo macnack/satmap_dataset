@@ -13,7 +13,7 @@ def test_osm_manifest_round_trip_with_null_rasters():
         srs="EPSG:2180",
         target_width=15000,
         target_height=15000,
-        categories=["buildings", "highways"],
+        categories=["buildings", "roads"],
         years=[
             OsmYearAsset(
                 year=2022,
@@ -23,7 +23,7 @@ def test_osm_manifest_round_trip_with_null_rasters():
                         feature_count=1326,
                         raster_path="osm_x/year_2022_buildings.tif",
                     ),
-                    "highways": OsmCategoryAsset(
+                    "roads": OsmCategoryAsset(
                         feature_count=0,
                         raster_path=None,
                     ),
@@ -40,12 +40,12 @@ def test_osm_manifest_round_trip_with_null_rasters():
     assert restored.years[0].year == 2022
     assert restored.years[0].categories["buildings"].feature_count == 1326
     assert restored.years[0].categories["buildings"].raster_path == "osm_x/year_2022_buildings.tif"
-    assert restored.years[0].categories["highways"].raster_path is None
+    assert restored.years[0].categories["roads"].raster_path is None
     assert restored.passed is True
 
 
 def _patch_seams(monkeypatch, *, features_by_cat=None):
-    counts = features_by_cat or {"buildings": 5, "highways": 3, "landuse": 2, "water": 1}
+    counts = features_by_cat or {"buildings": 5, "roads": 3, "paths": 2, "green": 2, "water": 1}
 
     async def _fake_fetch(bbox, category, snapshot_date, **kwargs):
         n = counts.get(category, 0)
@@ -107,7 +107,7 @@ def test_run_writes_rasters_and_manifest(tmp_path, monkeypatch):
 
 
 def test_run_zero_features_no_raster(tmp_path, monkeypatch):
-    _patch_seams(monkeypatch, features_by_cat={"buildings": 0, "highways": 0, "landuse": 0, "water": 0})
+    _patch_seams(monkeypatch, features_by_cat={"buildings": 0, "roads": 0, "paths": 0, "green": 0, "water": 0})
     render = _make_render_manifest(tmp_path, years_dates={2015: "2015-06-01"})
     cfg = OsmConfig(
         bbox="0,0,100,100",

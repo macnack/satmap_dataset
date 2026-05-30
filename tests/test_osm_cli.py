@@ -22,7 +22,7 @@ runner = CliRunner()
 
 def test_osm_config_defaults():
     cfg = OsmConfig(bbox="210300,521900,210500,522100")
-    assert cfg.categories == ["buildings", "highways", "landuse", "water"]
+    assert cfg.categories == ["buildings", "roads", "paths", "green", "water"]
     assert cfg.srs == "EPSG:2180"
     assert cfg.retries == 3
     assert cfg.sleep_min == 1.0
@@ -63,8 +63,8 @@ def test_osm_config_year_date_map():
 
 
 def test_osm_config_categories_normalized():
-    cfg = OsmConfig(bbox="0,0,10,10", categories=["BUILDINGS", "Highways"])
-    assert cfg.categories == ["buildings", "highways"]
+    cfg = OsmConfig(bbox="0,0,10,10", categories=["BUILDINGS", "Roads"])
+    assert cfg.categories == ["buildings", "roads"]
 
 
 def test_apply_location_paths_policy_adds_osm_root(tmp_path):
@@ -74,14 +74,14 @@ def test_apply_location_paths_policy_adds_osm_root(tmp_path):
 
 def test_build_osm_config_from_base_and_location(tmp_path):
     base = tmp_path / "base.json"
-    base.write_text(json.dumps({"categories": ["buildings", "highways"]}))
+    base.write_text(json.dumps({"categories": ["buildings", "roads"]}))
     loc = tmp_path / "loc_poznan.json"
     loc.write_text(json.dumps({
         "location_name": "Poznań",
         "center_lat": 52.4, "center_lon": 16.9, "square_km": 1.0,
     }))
     cfg = _build_osm_config_from_base_and_location(base_json=base, location_json=loc)
-    assert cfg.categories == ["buildings", "highways"]
+    assert cfg.categories == ["buildings", "roads"]
     assert str(cfg.osm_root).endswith("osm_poznan")
     assert cfg.bbox
 

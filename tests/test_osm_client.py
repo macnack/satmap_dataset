@@ -16,8 +16,9 @@ def test_bbox_epsg2180_to_wgs84_known_values():
 
 
 def test_category_filters_all_present():
-    expected = {"buildings", "highways", "landuse", "water"}
-    assert set(ohsome_client.CATEGORY_FILTERS.keys()) == expected
+    # ohsome_client.CATEGORY_FILTERS is legacy; current pipeline uses overpass_client.CATEGORY_QUERIES
+    from satmap_dataset.osm.overpass_client import CATEGORY_QUERIES
+    assert set(CATEGORY_QUERIES.keys()) == {"buildings", "roads", "paths", "green", "water"}
 
 
 def test_get_elements_geometry_builds_correct_post(monkeypatch):
