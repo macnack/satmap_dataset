@@ -157,7 +157,7 @@ def _resolve_align_grid(
 
 
 async def _run_async(config: DemConfig) -> tuple[int, Path]:
-    retry_policy = RetryPolicy(max_attempts=config.retries)
+    retry_policy = RetryPolicy(max_attempts=config.retries, backoff_seconds=config.retry_delay)
     grid = _resolve_align_grid(config) if config.align_to_render else None
     resample = str(config.provider_options.get("resample", "bilinear"))
     product_assets: list[DemProductAsset] = []
@@ -174,6 +174,7 @@ async def _run_async(config: DemConfig) -> tuple[int, Path]:
             )
             native_path = config.dem_root / "native" / f"{product}_{config.vertical_datum}.tif"
             try:
+                # When reusing an existing native file, tile_count stays 0 (no tiles fetched this run).
                 if not (native_path.exists() and not config.overwrite):
                     tiles = await _fetch_tiles_for_product(
                         config, product, tmp_dir, retry_policy=retry_policy

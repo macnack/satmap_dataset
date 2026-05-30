@@ -185,3 +185,28 @@ def test_geoportal_provider_dem_delegates(tmp_path, monkeypatch):
     code, path = GeoportalProvider().dem(cfg)
     assert code == 0
     assert called["config"] is cfg
+
+
+def test_run_wires_retry_delay_into_retry_policy(tmp_path, monkeypatch):
+    captured = {}
+
+    async def _fake_fetch(config, product, dest_dir, *, retry_policy):
+        captured["retry_policy"] = retry_policy
+        out = Path(dest_dir) / f"{product}_0000.tif"
+        out.write_bytes(b"TILE")
+        return [out]
+
+    monkeypatch.setattr(dem, "_fetch_tiles_for_product", _fake_fetch)
+    monkeypatch.setattr(dem, "_merge_tiles", lambda tiles, out_path: (out_path.parent.mkdir(parents=True, exist_ok=True), out_path.write_bytes(b"N")))
+    monkeypatch.setattr(dem, "_coverage_is_empty", lambda path: False)
+    monkeypatch.setattr(dem, "_raster_dims", lambda path: (10, 10))
+
+    cfg = DemConfig(
+        bbox="0,0,100,100", products=["nmt"], align_to_render=False,
+        retries=4, retry_delay=2.5,
+        dem_root=tmp_path / "dem_x", output_json=tmp_path / "dem_x" / "dem_manifest.json",
+    )
+    code, _ = dem.run(cfg)
+    assert code == 0
+    assert captured["retry_policy"].max_attempts == 4
+    assert captured["retry_policy"].backoff_seconds == 2.5

@@ -140,7 +140,7 @@ class DemProductAsset(BaseModel):
     aligned_width: int | None = None
     aligned_height: int | None = None
     tile_count: int = Field(default=0, ge=0)
-    nodata: float | None = None
+    nodata: float | None = None  # not yet populated; would require WCS DescribeCoverage
     passed: bool = False
     errors: list[str] = Field(default_factory=list)
 
