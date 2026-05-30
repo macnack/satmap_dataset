@@ -78,7 +78,7 @@ async def _run_async(config: OsmConfig) -> tuple[int, Path]:
     retry_policy = RetryPolicy(
         max_attempts=config.retries, backoff_seconds=config.retry_delay
     )
-    overpass_url = config.ohsome_url or overpass_client._DEFAULT_OVERPASS_URL
+    overpass_url = config.overpass_url
 
     for year in sorted(year_date_map.keys()):
         snapshot_date = year_date_map[year]

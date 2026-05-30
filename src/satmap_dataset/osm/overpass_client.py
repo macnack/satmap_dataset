@@ -11,7 +11,7 @@ CATEGORY_QUERIES: dict[str, str] = {
     "water": '(way["natural"="water"]; way["waterway"];)',
 }
 
-_DEFAULT_OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+_DEFAULT_OVERPASS_URL = "https://overpass.kumi.systems/api/interpreter"
 
 
 def _bbox_to_overpass(bbox_wgs84: str) -> str:
@@ -63,7 +63,7 @@ async def get_elements_geometry(
     query = _build_query(category, bbox_overpass, normalized)
     response = await request_with_retry(
         "POST",
-        _DEFAULT_OVERPASS_URL if overpass_url == _DEFAULT_OVERPASS_URL else overpass_url,
+        overpass_url,
         data={"data": query},
         timeout=timeout,
         retry_policy=retry_policy,

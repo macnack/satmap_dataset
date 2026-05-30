@@ -408,7 +408,7 @@ class OsmConfig(BaseModel):
     categories: list[str] = Field(default_factory=lambda: ["buildings", "highways", "landuse", "water"])
     target_width: int | None = Field(default=None, ge=1)
     target_height: int | None = Field(default=None, ge=1)
-    ohsome_url: str = "https://api.ohsome.org/v1"
+    overpass_url: str = "https://overpass.kumi.systems/api/interpreter"
     timeout: float = Field(default=60.0, gt=0.0)
     retries: int = Field(default=3, ge=1, le=20)
     retry_delay: float = Field(default=2.0, gt=0.0)
