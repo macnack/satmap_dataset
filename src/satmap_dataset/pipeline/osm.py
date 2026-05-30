@@ -6,7 +6,13 @@ import random
 from pathlib import Path
 
 from satmap_dataset.config import OsmConfig
-from satmap_dataset.models import OsmCategoryAsset, OsmManifest, OsmYearAsset
+from satmap_dataset.models import (
+    LayerManifest,
+    LayerYearAsset,
+    OsmCategoryAsset,
+    OsmYearAsset,
+    ReferenceGrid,
+)
 from satmap_dataset.osm import overpass_client, rasterize
 from satmap_dataset.osm.ohsome_client import bbox_epsg2180_to_wgs84
 
@@ -17,11 +23,11 @@ def _read_year_date_map(config: OsmConfig) -> dict[int, str]:
     if config.year_date_map is not None:
         return dict(config.year_date_map)
     if config.render_manifest is not None and Path(config.render_manifest).exists():
-        from satmap_dataset.models import DatasetManifest
-
-        manifest = DatasetManifest.model_validate_json(
+        manifest = LayerManifest.model_validate_json(
             Path(config.render_manifest).read_text(encoding="utf-8")
         )
+        if manifest.grid is not None and manifest.grid.year_date_map:
+            return dict(manifest.grid.year_date_map)
         result: dict[int, str] = {}
         for year, tile_acq in manifest.tile_acquisition_by_year.items():
             dates = [v.acquisition_date for v in tile_acq.values() if v.acquisition_date is not None]
@@ -38,15 +44,71 @@ def _read_grid(config: OsmConfig) -> tuple[int, int]:
     if config.target_width is not None and config.target_height is not None:
         return config.target_width, config.target_height
     if config.render_manifest is not None and Path(config.render_manifest).exists():
-        from satmap_dataset.models import DatasetManifest
-
-        manifest = DatasetManifest.model_validate_json(
+        manifest = LayerManifest.model_validate_json(
             Path(config.render_manifest).read_text(encoding="utf-8")
         )
+        if manifest.grid is not None:
+            return int(manifest.grid.width), int(manifest.grid.height)
         if manifest.target_width is not None and manifest.target_height is not None:
             return int(manifest.target_width), int(manifest.target_height)
     xmin, ymin, xmax, ymax = (float(x) for x in config.bbox.split(","))
     return max(1, round(xmax - xmin)), max(1, round(ymax - ymin))
+
+
+def build_osm_layer_manifest(
+    config: OsmConfig,
+    year_assets: list[OsmYearAsset],
+    *,
+    bbox_wgs84: str,
+    target_width: int | None,
+    target_height: int | None,
+    passed: bool,
+    errors: list[str],
+) -> LayerManifest:
+    """Map the category/year-centric OSM result onto the unified LayerManifest."""
+    grid: ReferenceGrid | None = None
+    if target_width is not None and target_height is not None:
+        grid = ReferenceGrid(
+            bbox=config.bbox,
+            width=target_width,
+            height=target_height,
+            srs=config.srs,
+            year_date_map={ya.year: ya.snapshot_date for ya in year_assets if ya.snapshot_date},
+        )
+
+    assets: list[str] = []
+    years: list[LayerYearAsset] = []
+    for ya in year_assets:
+        lya = LayerYearAsset(year=ya.year, snapshot_date=ya.snapshot_date, passed=ya.passed)
+        for category, cat_asset in ya.categories.items():
+            lya.feature_counts[category] = cat_asset.feature_count
+            if cat_asset.raster_path:
+                lya.assets[category] = cat_asset.raster_path
+                assets.append(cat_asset.raster_path)
+        if ya.errors:
+            lya.errors.extend(ya.errors)
+        years.append(lya)
+
+    return LayerManifest(
+        layer="osm",
+        role="labels",
+        stage="osm",
+        provider=None,
+        grid=grid,
+        bands=list(config.categories),
+        years_included=[ya.year for ya in year_assets],
+        years=years,
+        assets=assets,
+        target_srs=config.srs,
+        pixel_profile="MASK_U8",
+        passed=passed,
+        errors=list(errors),
+        run_parameters=config.model_dump(mode="json"),
+        provider_metadata={
+            "bbox_wgs84": bbox_wgs84,
+            "categories": list(config.categories),
+        },
+    )
 
 
 async def _run_async(config: OsmConfig) -> tuple[int, Path]:
@@ -59,14 +121,9 @@ async def _run_async(config: OsmConfig) -> tuple[int, Path]:
         year_date_map = _read_year_date_map(config)
     except ValueError as exc:
         errors.append(str(exc))
-        manifest = OsmManifest(
-            bbox=config.bbox,
-            bbox_wgs84="",
-            srs=config.srs,
-            categories=list(config.categories),
-            passed=False,
-            errors=errors,
-            run_parameters=config.model_dump(mode="json"),
+        manifest = build_osm_layer_manifest(
+            config, [], bbox_wgs84="", target_width=None, target_height=None,
+            passed=False, errors=errors,
         )
         config.output_json.parent.mkdir(parents=True, exist_ok=True)
         config.output_json.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
@@ -133,17 +190,14 @@ async def _run_async(config: OsmConfig) -> tuple[int, Path]:
         year_assets.append(year_asset)
 
     passed = bool(year_assets) and all(a.passed for a in year_assets)
-    manifest = OsmManifest(
-        bbox=config.bbox,
+    manifest = build_osm_layer_manifest(
+        config,
+        year_assets,
         bbox_wgs84=bbox_wgs84,
-        srs=config.srs,
         target_width=target_width,
         target_height=target_height,
-        categories=list(config.categories),
-        years=year_assets,
         passed=passed,
         errors=errors,
-        run_parameters=config.model_dump(mode="json"),
     )
     config.output_json.parent.mkdir(parents=True, exist_ok=True)
     config.output_json.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")

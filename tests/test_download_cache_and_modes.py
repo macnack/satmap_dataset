@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from satmap_dataset.config import DownloadConfig
-from satmap_dataset.models import DatasetManifest, IndexManifest, YearStatus
+from satmap_dataset.models import IndexManifest, LayerManifest, YearStatus
 from satmap_dataset.pipeline import downloader
 
 
@@ -171,7 +171,7 @@ def test_hybrid_mode_uses_wms_fallback_for_missing_years(monkeypatch, tmp_path: 
     code, output = downloader.run(config)
     assert code == 0
 
-    manifest = DatasetManifest.model_validate_json(output.read_text(encoding="utf-8"))
+    manifest = LayerManifest.model_validate_json(output.read_text(encoding="utf-8"))
     assert manifest.passed is True
     assert manifest.years_included == [2020, 2021]
     assert manifest.years_source_map[2021] == "wfs"
@@ -214,7 +214,7 @@ def test_wfs_tile_georef_mismatch_is_rejected(monkeypatch, tmp_path: Path) -> No
     )
 
     code, output = downloader.run(config)
-    manifest = DatasetManifest.model_validate_json(output.read_text(encoding="utf-8"))
+    manifest = LayerManifest.model_validate_json(output.read_text(encoding="utf-8"))
 
     assert code == 1
     assert manifest.passed is False
@@ -260,7 +260,7 @@ def test_hybrid_force_wms_year_skips_wfs_for_that_year(monkeypatch, tmp_path: Pa
     )
 
     code, output = downloader.run(config)
-    manifest = DatasetManifest.model_validate_json(output.read_text(encoding="utf-8"))
+    manifest = LayerManifest.model_validate_json(output.read_text(encoding="utf-8"))
 
     assert code == 0
     assert wfs_calls == []

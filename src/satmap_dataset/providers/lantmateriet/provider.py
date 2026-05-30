@@ -28,8 +28,8 @@ import httpx
 from satmap_dataset.config import DownloadConfig, IndexConfig
 from satmap_dataset.geoportal.http import RetryPolicy
 from satmap_dataset.models import (
-    DatasetManifest,
     IndexManifest,
+    LayerManifest,
     TileAcquisitionMetadata,
     YearAvailabilityReport,
     YearStatus,
@@ -539,7 +539,9 @@ class LantmaterietProvider(Provider):
         years_included_effective = sorted(
             year for year, src in years_source_map.items() if src in {"stac", "wms_fallback"}
         )
-        manifest = DatasetManifest(
+        manifest = LayerManifest(
+            layer="lantmateriet_rgb",
+            role="rgb",
             stage="download",
             provider="lantmateriet",
             years_requested=index_manifest.years_requested,

@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from satmap_dataset.models import (
-    DatasetManifest,
+    LayerManifest,
     IndexManifest,
     ValidationReport,
     YearAvailabilityReport,
@@ -61,7 +61,9 @@ def test_manifest_models_json_roundtrip() -> None:
         errors=["min_years policy failed"],
         run_parameters={"bbox": "210300,521900,210500,522100", "min_years": 2},
     )
-    dataset_manifest = DatasetManifest(
+    dataset_manifest = LayerManifest(
+        layer="geoportal_rgb",
+        role="rgb",
         stage="download",
         years_requested=[2015, 2016],
         years_available_wfs=[2015],
@@ -105,7 +107,7 @@ def test_manifest_models_json_roundtrip() -> None:
     )
 
     restored_index = IndexManifest.model_validate_json(index_manifest.model_dump_json())
-    restored_dataset = DatasetManifest.model_validate_json(dataset_manifest.model_dump_json())
+    restored_dataset = LayerManifest.model_validate_json(dataset_manifest.model_dump_json())
     restored_report = ValidationReport.model_validate_json(validation_report.model_dump_json())
     restored_availability = YearAvailabilityReport.model_validate_json(
         availability_report.model_dump_json()
@@ -134,7 +136,7 @@ def test_required_fields_and_types() -> None:
     assert index_fields["years_available_wfs"].is_required()
     assert index_fields["passed"].is_required()
 
-    dataset_fields = DatasetManifest.model_fields
+    dataset_fields = LayerManifest.model_fields
     assert dataset_fields["stage"].annotation is not None
     assert dataset_fields["years_included"].annotation is not None
 

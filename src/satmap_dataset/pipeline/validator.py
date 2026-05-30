@@ -8,7 +8,7 @@ import logging
 import tifffile
 
 from satmap_dataset.config import ValidateConfig
-from satmap_dataset.models import DatasetManifest, ValidationReport
+from satmap_dataset.models import LayerManifest, ValidationReport
 
 logger = logging.getLogger("satmap_dataset.validate")
 
@@ -115,8 +115,8 @@ def build_validation_report(
     )
 
 
-def _read_dataset_manifest(path: Path) -> DatasetManifest:
-    return DatasetManifest.model_validate_json(path.read_text(encoding="utf-8"))
+def _read_dataset_manifest(path: Path) -> LayerManifest:
+    return LayerManifest.model_validate_json(path.read_text(encoding="utf-8"))
 
 
 def _write_json(path: Path, payload: ValidationReport) -> None:

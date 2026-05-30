@@ -2,46 +2,49 @@ import json
 from pathlib import Path
 
 from satmap_dataset.config import OsmConfig
-from satmap_dataset.models import OsmCategoryAsset, OsmManifest, OsmYearAsset
+from satmap_dataset.models import LayerManifest, OsmCategoryAsset, OsmYearAsset
 from satmap_dataset.pipeline import osm as osm_pipeline
 
 
-def test_osm_manifest_round_trip_with_null_rasters():
-    manifest = OsmManifest(
+def test_build_osm_layer_manifest_maps_categories_and_rasters():
+    cfg = OsmConfig(
         bbox="348967,508503,349967,509503",
-        bbox_wgs84="16.778,52.421,16.792,52.430",
         srs="EPSG:2180",
-        target_width=15000,
-        target_height=15000,
+        osm_root="osm_x",
+        output_json="osm_x/osm_manifest.json",
         categories=["buildings", "roads"],
-        years=[
-            OsmYearAsset(
-                year=2022,
-                snapshot_date="2022-04-29T00:00:00Z",
-                categories={
-                    "buildings": OsmCategoryAsset(
-                        feature_count=1326,
-                        raster_path="osm_x/year_2022_buildings.tif",
-                    ),
-                    "roads": OsmCategoryAsset(
-                        feature_count=0,
-                        raster_path=None,
-                    ),
-                },
-                passed=True,
-            ),
-        ],
-        passed=True,
     )
-    blob = manifest.model_dump_json()
-    restored = OsmManifest.model_validate_json(blob)
-    assert restored.kind == "osm_manifest"
-    assert restored.stage == "osm"
-    assert restored.years[0].year == 2022
-    assert restored.years[0].categories["buildings"].feature_count == 1326
-    assert restored.years[0].categories["buildings"].raster_path == "osm_x/year_2022_buildings.tif"
-    assert restored.years[0].categories["roads"].raster_path is None
-    assert restored.passed is True
+    year_assets = [
+        OsmYearAsset(
+            year=2022,
+            snapshot_date="2022-04-29T00:00:00Z",
+            categories={
+                "buildings": OsmCategoryAsset(
+                    feature_count=1326, raster_path="osm_x/year_2022_buildings.tif"
+                ),
+                "roads": OsmCategoryAsset(feature_count=0, raster_path=None),
+            },
+            passed=True,
+        ),
+    ]
+    manifest = osm_pipeline.build_osm_layer_manifest(
+        cfg, year_assets, bbox_wgs84="16.778,52.421,16.792,52.430",
+        target_width=15000, target_height=15000, passed=True, errors=[],
+    )
+    restored = LayerManifest.model_validate_json(manifest.model_dump_json())
+    assert restored.role == "labels"
+    assert restored.layer == "osm"
+    assert restored.provider is None
+    assert restored.bands == ["buildings", "roads"]
+    year = restored.years[0]
+    assert year.year == 2022
+    assert year.feature_counts["buildings"] == 1326
+    assert year.assets["buildings"] == "osm_x/year_2022_buildings.tif"
+    # zero-feature category has a count but no raster asset.
+    assert year.feature_counts["roads"] == 0
+    assert "roads" not in year.assets
+    assert restored.grid is not None and restored.grid.width == 15000
+    assert restored.grid.year_date_map == {2022: "2022-04-29T00:00:00Z"}
 
 
 def _patch_seams(monkeypatch, *, features_by_cat=None):
@@ -68,7 +71,9 @@ def _make_render_manifest(tmp_path, *, years_dates: dict) -> Path:
         for year, date in years_dates.items()
     }
     data = {
-        "kind": "dataset_manifest",
+        "kind": "layer_manifest",
+        "layer": "geoportal_rgb",
+        "role": "rgb",
         "stage": "render",
         "target_bbox": "0,0,100,100",
         "target_width": 100,
@@ -95,15 +100,15 @@ def test_run_writes_rasters_and_manifest(tmp_path, monkeypatch):
     )
     code, path = osm_pipeline.run(cfg)
     assert code == 0
-    manifest = OsmManifest.model_validate_json(Path(path).read_text())
+    manifest = LayerManifest.model_validate_json(Path(path).read_text())
     assert manifest.passed is True
     assert {a.year for a in manifest.years} == {2022, 2023}
     for year_asset in manifest.years:
         assert year_asset.passed is True
-        for cat, asset in year_asset.categories.items():
-            assert asset.feature_count > 0
-            assert asset.raster_path is not None
-            assert Path(asset.raster_path).exists()
+        for cat, count in year_asset.feature_counts.items():
+            assert count > 0
+            assert cat in year_asset.assets
+            assert Path(year_asset.assets[cat]).exists()
 
 
 def test_run_zero_features_no_raster(tmp_path, monkeypatch):
@@ -120,11 +125,12 @@ def test_run_zero_features_no_raster(tmp_path, monkeypatch):
     )
     code, path = osm_pipeline.run(cfg)
     assert code == 0
-    manifest = OsmManifest.model_validate_json(Path(path).read_text())
+    manifest = LayerManifest.model_validate_json(Path(path).read_text())
     assert manifest.passed is True
-    for cat, asset in manifest.years[0].categories.items():
-        assert asset.feature_count == 0
-        assert asset.raster_path is None
+    year = manifest.years[0]
+    for cat, count in year.feature_counts.items():
+        assert count == 0
+        assert cat not in year.assets
 
 
 def test_run_uses_acquisition_date_not_jan1(tmp_path, monkeypatch):
@@ -189,7 +195,7 @@ def test_run_no_year_date_source_raises(tmp_path):
     )
     code, path = osm_pipeline.run(cfg)
     assert code == 1
-    manifest = OsmManifest.model_validate_json(Path(path).read_text())
+    manifest = LayerManifest.model_validate_json(Path(path).read_text())
     assert manifest.passed is False
     assert manifest.errors
 

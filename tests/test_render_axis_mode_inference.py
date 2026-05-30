@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from satmap_dataset.config import RenderConfig
-from satmap_dataset.models import DatasetManifest
+from satmap_dataset.models import LayerManifest
 from satmap_dataset.pipeline import render
 
 
@@ -68,7 +68,9 @@ def test_render_run_applies_inferred_swapped_axis_mode_without_calibration(
         py=20.0,
     )
 
-    source_manifest = DatasetManifest(
+    source_manifest = LayerManifest(
+        layer="geoportal_rgb",
+        role="rgb",
         stage="download",
         years_requested=[2023],
         years_available_wfs=[2023],
@@ -119,5 +121,5 @@ def test_render_run_applies_inferred_swapped_axis_mode_without_calibration(
     assert exit_code == 0
     assert captured["source_axis_mode"] == "swapped"
 
-    out_manifest = DatasetManifest.model_validate_json(out_manifest_path.read_text(encoding="utf-8"))
+    out_manifest = LayerManifest.model_validate_json(out_manifest_path.read_text(encoding="utf-8"))
     assert out_manifest.passed is True

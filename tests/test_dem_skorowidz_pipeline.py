@@ -4,8 +4,12 @@ import pytest
 from pathlib import Path
 
 from satmap_dataset.config import DemConfig
-from satmap_dataset.models import DemManifest, YearStatus
+from satmap_dataset.models import DemProductAsset, LayerManifest, YearStatus
 from satmap_dataset.pipeline import dem_skorowidz
+
+
+def _products(m):
+    return [DemProductAsset.model_validate(p) for p in m.provider_metadata["products"]]
 
 
 def _patch(monkeypatch, *, tiles_by_year):
@@ -59,9 +63,9 @@ def test_run_year_keyed_native(tmp_path, monkeypatch):
     _patch(monkeypatch, tiles_by_year={2012: {"g1": "u1", "g2": "u2"}, 2019: {"g3": "u3"}})
     code, path = dem_skorowidz.run(_cfg(tmp_path))
     assert code == 0
-    m = DemManifest.model_validate_json(Path(path).read_text())
-    assert m.transport == "skorowidz"
-    nmt = m.products[0]
+    m = LayerManifest.model_validate_json(Path(path).read_text())
+    assert m.provider_metadata["transport"] == "skorowidz"
+    nmt = _products(m)[0]
     years = {y.year: y for y in nmt.years}
     assert set(years) == {2012, 2019}
     assert years[2012].tile_count == 2 and years[2012].passed
@@ -74,9 +78,9 @@ def test_run_skips_empty_year(tmp_path, monkeypatch):
     _patch(monkeypatch, tiles_by_year={2012: {"g1": "u1"}, 2015: {}})
     code, path = dem_skorowidz.run(_cfg(tmp_path))
     assert code == 0
-    m = DemManifest.model_validate_json(Path(path).read_text())
-    assert 2015 in m.years_skipped
-    assert {y.year for y in m.products[0].years} == {2012}
+    m = LayerManifest.model_validate_json(Path(path).read_text())
+    assert 2015 in m.years_excluded_with_reason
+    assert {y.year for y in _products(m)[0].years} == {2012}
 
 
 def test_run_aligns_when_enabled(tmp_path, monkeypatch):
@@ -84,8 +88,8 @@ def test_run_aligns_when_enabled(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, align_to_render=True, target_bbox="0,0,100,100", target_width=100, target_height=100)
     code, path = dem_skorowidz.run(cfg)
     assert code == 0
-    m = DemManifest.model_validate_json(Path(path).read_text())
-    y = m.products[0].years[0]
+    m = LayerManifest.model_validate_json(Path(path).read_text())
+    y = _products(m)[0].years[0]
     assert Path(y.aligned_path).exists() and y.aligned_width == 100
 
 
@@ -93,7 +97,7 @@ def test_run_fails_when_no_years_available(tmp_path, monkeypatch):
     _patch(monkeypatch, tiles_by_year={})
     code, path = dem_skorowidz.run(_cfg(tmp_path, year_start=2012, year_end=2012))
     assert code == 1
-    m = DemManifest.model_validate_json(Path(path).read_text())
+    m = LayerManifest.model_validate_json(Path(path).read_text())
     assert m.passed is False
 
 
@@ -119,8 +123,8 @@ def test_run_reuses_existing_native_without_download(tmp_path, monkeypatch):
     code, path = dem_skorowidz.run(cfg)
     assert code == 0
     assert calls["download"] == 0 and calls["mosaic"] == 0
-    m = DemManifest.model_validate_json(Path(path).read_text())
-    y = m.products[0].years[0]
+    m = LayerManifest.model_validate_json(Path(path).read_text())
+    y = _products(m)[0].years[0]
     assert y.passed is True
     assert y.godla == ["g1"]  # godla set even on the reuse path
 
@@ -135,9 +139,9 @@ def test_run_capabilities_failure_isolates_product(tmp_path, monkeypatch):
 
     code, path = dem_skorowidz.run(_cfg(tmp_path))
     assert code == 1  # no years produced
-    m = DemManifest.model_validate_json(Path(path).read_text())
-    assert m.products[0].years == []
-    assert m.products[0].passed is False
+    m = LayerManifest.model_validate_json(Path(path).read_text())
+    assert _products(m)[0].years == []
+    assert _products(m)[0].passed is False
 
 
 def test_select_grid_urls_prefers_nonxyz_and_keeps_only_xyz():

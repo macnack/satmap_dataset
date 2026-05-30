@@ -14,7 +14,7 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, T
 import tifffile
 
 from satmap_dataset.config import DownloadConfig
-from satmap_dataset.models import DatasetManifest, IndexManifest
+from satmap_dataset.models import IndexManifest, LayerManifest
 
 logger = logging.getLogger("satmap_dataset.download")
 WMS_ORTHO_URL = "https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMS/StandardResolutionTime"
@@ -52,7 +52,7 @@ def _read_index_manifest(path: Path) -> IndexManifest:
     return IndexManifest.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def _write_json(path: Path, payload: DatasetManifest) -> None:
+def _write_json(path: Path, payload: LayerManifest) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(payload.model_dump_json(indent=2), encoding="utf-8")
 
@@ -753,8 +753,11 @@ def run(config: DownloadConfig) -> tuple[int, Path]:
         and bool(assets)
     )
 
-    manifest = DatasetManifest(
+    manifest = LayerManifest(
+        layer=f"{config.provider}_rgb",
+        role="rgb",
         stage="download",
+        provider=config.provider,
         years_requested=index_manifest.years_requested,
         years_available_wfs=index_manifest.years_available_wfs,
         years_included=years_included_effective,

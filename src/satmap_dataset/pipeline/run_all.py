@@ -10,7 +10,7 @@ from satmap_dataset.config import (
     RunConfig,
     ValidateConfig,
 )
-from satmap_dataset.models import DatasetManifest, IndexManifest
+from satmap_dataset.models import IndexManifest, LayerManifest
 from satmap_dataset.pipeline import downloader, index_builder, render, validator
 from satmap_dataset.providers import get_provider
 
@@ -26,11 +26,11 @@ def _load_index_manifest(path: Path) -> IndexManifest | None:
         return None
 
 
-def _load_dataset_manifest(path: Path) -> DatasetManifest | None:
+def _load_dataset_manifest(path: Path) -> LayerManifest | None:
     if not path.exists():
         return None
     try:
-        return DatasetManifest.model_validate_json(path.read_text(encoding="utf-8"))
+        return LayerManifest.model_validate_json(path.read_text(encoding="utf-8"))
     except Exception:
         return None
 
@@ -140,7 +140,7 @@ def _same_path_ref(a: str | None, b: Path, base: Path) -> bool:
     return pa == b.resolve()
 
 
-def _can_reuse_download(manifest: DatasetManifest, config: RunConfig, index_output: Path, download_output: Path) -> bool:
+def _can_reuse_download(manifest: LayerManifest, config: RunConfig, index_output: Path, download_output: Path) -> bool:
     if not manifest.passed or manifest.stage != "download":
         return False
     if manifest.provider != config.provider:
@@ -223,7 +223,13 @@ def _write_wms_only_index(config: RunConfig, index_output: Path, year_availabili
     year_availability_output.write_text(year_report.model_dump_json(indent=2), encoding="utf-8")
 
 
-def run(config: RunConfig) -> tuple[int, Path]:
+def _run_rgb_pipeline(config: RunConfig) -> tuple[int, Path]:
+    """Run index -> download -> render for the RGB orthophoto.
+
+    Returns (exit_code, path). On success the path is the render manifest; on
+    failure it is the failing stage's output. This is the shared core used by
+    both ``run`` (which appends validation) and the RGB Layer adapter.
+    """
     logger.info("Run: start year_start=%s year_end=%s bbox=%s", config.year_start, config.year_end, config.bbox)
     artifacts_dir = config.artifacts_dir
     artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -232,7 +238,6 @@ def run(config: RunConfig) -> tuple[int, Path]:
     year_availability_output = artifacts_dir / "year_availability_report.json"
     download_output = artifacts_dir / "dataset_manifest_download.json"
     render_output = artifacts_dir / "dataset_manifest_render.json"
-    validate_output = artifacts_dir / "validation_report.json"
 
     provider = get_provider(config.provider)
     existing_index = _load_index_manifest(index_output)
@@ -318,9 +323,17 @@ def run(config: RunConfig) -> tuple[int, Path]:
     if render_code != 0:
         logger.error("Run: render failed output=%s", render_output)
         return render_code, render_output
+    return 0, render_output
 
+
+def run(config: RunConfig) -> tuple[int, Path]:
+    rgb_code, rgb_output = _run_rgb_pipeline(config)
+    if rgb_code != 0:
+        return rgb_code, rgb_output
+
+    validate_output = config.artifacts_dir / "validation_report.json"
     validate_config = ValidateConfig(
-        dataset_manifest=render_output,
+        dataset_manifest=rgb_output,
         requested_years=config.requested_years,
         strict_years=config.strict_years,
         min_years=config.min_years,

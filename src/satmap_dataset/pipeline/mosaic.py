@@ -3,14 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from satmap_dataset.config import MosaicConfig
-from satmap_dataset.models import DatasetManifest
+from satmap_dataset.models import LayerManifest
 
 
-def _read_dataset_manifest(path: Path) -> DatasetManifest:
-    return DatasetManifest.model_validate_json(path.read_text(encoding="utf-8"))
+def _read_dataset_manifest(path: Path) -> LayerManifest:
+    return LayerManifest.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def _write_json(path: Path, payload: DatasetManifest) -> None:
+def _write_json(path: Path, payload: LayerManifest) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(payload.model_dump_json(indent=2), encoding="utf-8")
 
@@ -22,8 +22,11 @@ def run(config: MosaicConfig) -> tuple[int, Path]:
     assets = list(source_manifest.assets)
     passed = source_manifest.passed and bool(years) and bool(assets)
 
-    manifest = DatasetManifest(
-        stage="mosaic",
+    manifest = LayerManifest(
+        layer=f"{source_manifest.provider or 'geoportal'}_rgb",
+        role="rgb",
+        provider=source_manifest.provider,
+        stage="render",
         years_requested=source_manifest.years_requested,
         years_available_wfs=source_manifest.years_available_wfs,
         years_included=years,

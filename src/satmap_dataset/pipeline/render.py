@@ -14,7 +14,7 @@ import numpy as np
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 
 from satmap_dataset.config import RenderConfig
-from satmap_dataset.models import DatasetManifest, IndexManifest
+from satmap_dataset.models import IndexManifest, LayerManifest
 from satmap_dataset.pipeline import diagnostics
 
 logger = logging.getLogger("satmap_dataset.render")
@@ -171,15 +171,15 @@ def _parse_bbox(bbox: str) -> BBox:
     return BBox(min_x=min_x, min_y=min_y, max_x=max_x, max_y=max_y)
 
 
-def _read_dataset_manifest(path: Path) -> DatasetManifest:
-    return DatasetManifest.model_validate_json(path.read_text(encoding="utf-8"))
+def _read_dataset_manifest(path: Path) -> LayerManifest:
+    return LayerManifest.model_validate_json(path.read_text(encoding="utf-8"))
 
 
 def _read_index_manifest(path: Path) -> IndexManifest:
     return IndexManifest.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def _write_json(path: Path, payload: DatasetManifest) -> None:
+def _write_json(path: Path, payload: LayerManifest) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(payload.model_dump_json(indent=2), encoding="utf-8")
 
@@ -193,7 +193,7 @@ def _resolve_manifest_path(reference: str, dataset_manifest_path: Path) -> Path:
     return (dataset_manifest_path.parent / candidate).resolve()
 
 
-def _resolve_target_bbox(config: RenderConfig, source_manifest: DatasetManifest, dataset_manifest_path: Path) -> BBox:
+def _resolve_target_bbox(config: RenderConfig, source_manifest: LayerManifest, dataset_manifest_path: Path) -> BBox:
     if config.target_bbox is not None:
         return _parse_bbox(config.target_bbox)
     if source_manifest.target_bbox is not None:
@@ -577,7 +577,7 @@ def _parse_year_from_output_name(path: Path) -> int | None:
     return None
 
 
-def _manifest_by_year(manifest: DatasetManifest) -> dict[int, str]:
+def _manifest_by_year(manifest: LayerManifest) -> dict[int, str]:
     by_year: dict[int, str] = {}
     for asset in manifest.assets:
         year = _parse_year_from_output_name(Path(asset))
@@ -1061,7 +1061,10 @@ def run(config: RenderConfig) -> tuple[int, Path]:
         logger.warning("Render: experimental_per_year_color_norm enabled")
 
     if not source_manifest.years_included:
-        manifest = DatasetManifest(
+        manifest = LayerManifest(
+            layer=f"{source_manifest.provider or 'geoportal'}_rgb",
+            role="rgb",
+            provider=source_manifest.provider,
             stage="render",
             years_requested=source_manifest.years_requested,
             years_available_wfs=source_manifest.years_available_wfs,
@@ -1239,7 +1242,10 @@ def run(config: RenderConfig) -> tuple[int, Path]:
     except Exception as exc:
         notes += f" | diagnostics_error={exc}"
 
-    manifest = DatasetManifest(
+    manifest = LayerManifest(
+        layer=f"{source_manifest.provider or 'geoportal'}_rgb",
+        role="rgb",
+        provider=source_manifest.provider,
         stage="render",
         years_requested=source_manifest.years_requested,
         years_available_wfs=source_manifest.years_available_wfs,

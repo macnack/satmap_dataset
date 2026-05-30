@@ -2,8 +2,12 @@ import json
 from pathlib import Path
 
 from satmap_dataset.config import DemConfig
-from satmap_dataset.models import DemManifest
+from satmap_dataset.models import DemProductAsset, LayerManifest
 from satmap_dataset.pipeline import dem
+
+
+def _products(m):
+    return [DemProductAsset.model_validate(p) for p in m.provider_metadata["products"]]
 
 
 def _patch_seams(monkeypatch, *, empty=False):
@@ -41,10 +45,10 @@ def test_run_writes_native_and_aligned_for_both_products(tmp_path, monkeypatch):
     )
     code, path = dem.run(cfg)
     assert code == 0
-    manifest = DemManifest.model_validate_json(Path(path).read_text())
+    manifest = LayerManifest.model_validate_json(Path(path).read_text())
     assert manifest.passed is True
-    assert {p.product for p in manifest.products} == {"nmt", "nmpt"}
-    for p in manifest.products:
+    assert {p.product for p in _products(manifest)} == {"nmt", "nmpt"}
+    for p in _products(manifest):
         assert p.passed is True
         assert Path(p.native_path).exists()
         assert Path(p.aligned_path).exists()
@@ -62,8 +66,8 @@ def test_run_no_align_when_disabled(tmp_path, monkeypatch):
     )
     code, path = dem.run(cfg)
     assert code == 0
-    manifest = DemManifest.model_validate_json(Path(path).read_text())
-    assert manifest.products[0].aligned_path is None
+    manifest = LayerManifest.model_validate_json(Path(path).read_text())
+    assert _products(manifest)[0].aligned_path is None
 
 
 def test_run_fails_on_empty_coverage(tmp_path, monkeypatch):
@@ -77,15 +81,15 @@ def test_run_fails_on_empty_coverage(tmp_path, monkeypatch):
     )
     code, path = dem.run(cfg)
     assert code == 1
-    manifest = DemManifest.model_validate_json(Path(path).read_text())
+    manifest = LayerManifest.model_validate_json(Path(path).read_text())
     assert manifest.passed is False
-    assert manifest.products[0].passed is False
+    assert _products(manifest)[0].passed is False
 
 
 def test_resolve_align_grid_prefers_render_manifest(tmp_path):
     render_manifest = tmp_path / "dataset_manifest_render.json"
     render_manifest.write_text(json.dumps({
-        "kind": "dataset_manifest", "stage": "render",
+        "kind": "layer_manifest", "layer": "geoportal_rgb", "role": "rgb", "stage": "render",
         "target_bbox": "5,5,55,55", "target_width": 500, "target_height": 500,
     }))
     cfg = DemConfig(
@@ -164,9 +168,9 @@ def test_run_partial_failure_marks_not_passed(tmp_path, monkeypatch):
     )
     code, path = dem.run(cfg)
     assert code == 1
-    manifest = DemManifest.model_validate_json(Path(path).read_text())
+    manifest = LayerManifest.model_validate_json(Path(path).read_text())
     assert manifest.passed is False
-    by_product = {p.product: p for p in manifest.products}
+    by_product = {p.product: p for p in _products(manifest)}
     assert by_product["nmt"].passed is True
     assert by_product["nmpt"].passed is False
 

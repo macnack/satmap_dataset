@@ -37,8 +37,8 @@ import httpx
 from satmap_dataset.config import DownloadConfig, IndexConfig
 from satmap_dataset.geoportal.http import RetryPolicy
 from satmap_dataset.models import (
-    DatasetManifest,
     IndexManifest,
+    LayerManifest,
     TileAcquisitionMetadata,
     YearAvailabilityReport,
     YearStatus,
@@ -570,7 +570,9 @@ class Sentinel2Provider(Provider):
             await asyncio.gather(*workers)
 
         years_included_effective = sorted(years_source_map.keys())
-        manifest = DatasetManifest(
+        manifest = LayerManifest(
+            layer="sentinel2_rgb",
+            role="rgb",
             stage="download",
             provider="sentinel2",
             years_requested=index_manifest.years_requested,

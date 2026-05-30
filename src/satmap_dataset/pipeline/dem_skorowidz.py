@@ -13,7 +13,7 @@ import httpx
 from satmap_dataset.config import DemConfig
 from satmap_dataset.geoportal import dem_skorowidz_client
 from satmap_dataset.geoportal.http import RetryPolicy
-from satmap_dataset.models import DemManifest, DemProductAsset, DemYearAsset
+from satmap_dataset.models import DemProductAsset, DemYearAsset
 from satmap_dataset.pipeline import dem
 from satmap_dataset.providers.lantmateriet.provider import _download_asset_with_retry
 
@@ -240,12 +240,15 @@ async def _run_async(config: DemConfig) -> tuple[int, Path]:
         product_assets.append(asset)
 
     passed = any(y.passed for a in product_assets for y in a.years)
-    manifest = DemManifest(
-        provider="geoportal", bbox=config.bbox, srs=config.srs, vertical_datum=config.vertical_datum,
-        transport="skorowidz", years_requested=requested, years_skipped=years_skipped,
-        products=product_assets, align_to_render=config.align_to_render, passed=passed,
+    manifest = dem.build_dem_layer_manifest(
+        config,
+        product_assets,
+        transport="skorowidz",
+        years_skipped=years_skipped,
+        grid=grid,
+        passed=passed,
+        errors=[],
         notes="GUGiK skorowidz (WFS) historical NMT/NMPT; one mosaic per ALS acquisition year.",
-        run_parameters=config.model_dump(mode="json"),
     )
     config.output_json.parent.mkdir(parents=True, exist_ok=True)
     config.output_json.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")

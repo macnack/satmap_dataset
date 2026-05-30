@@ -16,7 +16,7 @@ from satmap_dataset.config import (
     PROVIDER_LANTMATERIET,
     RunConfig,
 )
-from satmap_dataset.models import IndexManifest, DatasetManifest
+from satmap_dataset.models import IndexManifest, LayerManifest
 
 
 def test_run_config_defaults_to_geoportal_provider() -> None:
@@ -93,13 +93,15 @@ def test_index_manifest_serialization_includes_provider() -> None:
 
 
 def test_dataset_manifest_supports_stac_mode_and_arbitrary_source_keys() -> None:
-    manifest = DatasetManifest(
+    manifest = LayerManifest(
+        layer="lantmateriet_rgb",
+        role="rgb",
         provider=PROVIDER_LANTMATERIET,
         stage="download",
         mode="stac",
         years_source_map={2015: "stac", 2016: "wms_fallback"},
     )
-    restored = DatasetManifest.model_validate_json(manifest.model_dump_json())
+    restored = LayerManifest.model_validate_json(manifest.model_dump_json())
     assert restored.provider == PROVIDER_LANTMATERIET
     assert restored.mode == "stac"
     assert restored.years_source_map == {2015: "stac", 2016: "wms_fallback"}

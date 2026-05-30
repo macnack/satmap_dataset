@@ -1,16 +1,18 @@
 """satmap_dataset package."""
 
 from satmap_dataset.models import (
-    DatasetManifest,
     IndexManifest,
+    LayerManifest,
+    ReferenceGrid,
     ValidationReport,
     YearAvailabilityReport,
     YearStatus,
 )
 
 __all__ = [
-    "DatasetManifest",
     "IndexManifest",
+    "LayerManifest",
+    "ReferenceGrid",
     "ValidationReport",
     "YearAvailabilityReport",
     "YearStatus",

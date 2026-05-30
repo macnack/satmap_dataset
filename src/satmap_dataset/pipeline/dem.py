@@ -11,7 +11,12 @@ from pathlib import Path
 from satmap_dataset.config import DemConfig
 from satmap_dataset.geoportal import wcs_client
 from satmap_dataset.geoportal.http import RetryPolicy
-from satmap_dataset.models import DemManifest, DemProductAsset
+from satmap_dataset.models import (
+    DemProductAsset,
+    LayerManifest,
+    LayerYearAsset,
+    ReferenceGrid,
+)
 
 logger = logging.getLogger("satmap_dataset.dem")
 
@@ -154,11 +159,12 @@ def _resolve_align_grid(
     config: DemConfig,
 ) -> tuple[tuple[float, float, float, float], int, int]:
     if config.render_manifest and Path(config.render_manifest).exists():
-        from satmap_dataset.models import DatasetManifest
-
-        manifest = DatasetManifest.model_validate_json(
+        manifest = LayerManifest.model_validate_json(
             Path(config.render_manifest).read_text(encoding="utf-8")
         )
+        grid = manifest.grid
+        if grid is not None:
+            return (_parse_bbox(grid.bbox), int(grid.width), int(grid.height))
         if manifest.target_bbox and manifest.target_width and manifest.target_height:
             return (
                 _parse_bbox(manifest.target_bbox),
@@ -172,6 +178,86 @@ def _resolve_align_grid(
     width = max(1, round((xmax - xmin) * config.px_per_meter))
     height = max(1, round((ymax - ymin) * config.px_per_meter))
     return (bbox, width, height)
+
+
+def _grid_to_reference(
+    grid: tuple[tuple[float, float, float, float], int, int] | None, srs: str
+) -> ReferenceGrid | None:
+    if grid is None:
+        return None
+    (xmin, ymin, xmax, ymax), width, height = grid
+    return ReferenceGrid(
+        bbox=f"{xmin},{ymin},{xmax},{ymax}", width=width, height=height, srs=srs
+    )
+
+
+def build_dem_layer_manifest(
+    config: DemConfig,
+    product_assets: list[DemProductAsset],
+    *,
+    transport: str,
+    years_skipped: dict[int, str],
+    grid: tuple[tuple[float, float, float, float], int, int] | None,
+    passed: bool,
+    errors: list[str],
+    notes: str | None,
+) -> LayerManifest:
+    """Map the product/year-centric DEM result onto the unified LayerManifest.
+
+    Rich per-product detail (coverage_id, endpoint, native/aligned dims, godla)
+    is preserved verbatim under ``provider_metadata['products']``; the flat
+    LayerManifest fields carry what the orchestrator and a multi-band assembler
+    need. Raster output paths are echoed unchanged.
+    """
+    assets: list[str] = []
+    year_map: dict[int, LayerYearAsset] = {}
+    for asset in product_assets:
+        if asset.years:
+            for ya in asset.years:
+                lya = year_map.setdefault(
+                    ya.year, LayerYearAsset(year=ya.year, passed=True)
+                )
+                if ya.native_path:
+                    lya.native_paths[asset.product] = ya.native_path
+                chosen = ya.aligned_path or ya.native_path
+                if chosen:
+                    lya.assets[asset.product] = chosen
+                    assets.append(chosen)
+                if ya.errors:
+                    lya.errors.extend(f"{asset.product}: {e}" for e in ya.errors)
+                lya.passed = lya.passed and ya.passed
+        else:
+            chosen = asset.aligned_path or asset.native_path
+            if chosen:
+                assets.append(chosen)
+
+    years = [year_map[y] for y in sorted(year_map)]
+    return LayerManifest(
+        layer="dem",
+        role="dem",
+        stage="dem",
+        provider="geoportal",
+        grid=_grid_to_reference(grid, config.srs),
+        bands=[asset.product for asset in product_assets],
+        years_requested=config.requested_years,
+        years_included=sorted(year_map),
+        years_excluded_with_reason=dict(years_skipped),
+        years=years,
+        assets=assets,
+        target_srs=config.srs,
+        pixel_profile="DEM_F32",
+        passed=passed,
+        notes=notes,
+        errors=list(errors),
+        run_parameters=config.model_dump(mode="json"),
+        provider_metadata={
+            "products": [asset.model_dump() for asset in product_assets],
+            "vertical_datum": config.vertical_datum,
+            "transport": transport,
+            "bbox": config.bbox,
+            "align_to_render": config.align_to_render,
+        },
+    )
 
 
 async def _run_async(config: DemConfig) -> tuple[int, Path]:
@@ -225,17 +311,15 @@ async def _run_async(config: DemConfig) -> tuple[int, Path]:
             product_assets.append(asset)
 
     passed = bool(product_assets) and all(a.passed for a in product_assets)
-    manifest = DemManifest(
-        provider="geoportal",
-        bbox=config.bbox,
-        srs=config.srs,
-        vertical_datum=config.vertical_datum,
-        products=product_assets,
-        align_to_render=config.align_to_render,
+    manifest = build_dem_layer_manifest(
+        config,
+        product_assets,
+        transport="wcs",
+        years_skipped={},
+        grid=grid,
         passed=passed,
-        notes="WCS GRID1 serves a current-best 1 m composite; not year-aware.",
         errors=errors,
-        run_parameters=config.model_dump(mode="json"),
+        notes="WCS GRID1 serves a current-best 1 m composite; not year-aware.",
     )
     config.output_json.parent.mkdir(parents=True, exist_ok=True)
     config.output_json.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
