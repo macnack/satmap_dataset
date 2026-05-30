@@ -371,3 +371,54 @@ class DemConfig(BaseModel):
         if (self.target_width is None) != (self.target_height is None):
             raise ValueError("target_width and target_height must be set together")
         return self
+
+
+_OSM_ALLOWED_CATEGORIES: frozenset[str] = frozenset({"buildings", "highways", "landuse", "water"})
+
+
+class OsmConfig(BaseModel):
+    bbox: str
+    srs: str = "EPSG:2180"
+    osm_root: Path = Path("osm")
+    output_json: Path = Path("osm/osm_manifest.json")
+    render_manifest: Path | None = None
+    year_date_map: dict[int, str] | None = None
+    categories: list[str] = Field(default_factory=lambda: ["buildings", "highways", "landuse", "water"])
+    target_width: int | None = Field(default=None, ge=1)
+    target_height: int | None = Field(default=None, ge=1)
+    ohsome_url: str = "https://api.ohsome.org/v1"
+    timeout: float = Field(default=60.0, gt=0.0)
+    retries: int = Field(default=3, ge=1, le=20)
+    retry_delay: float = Field(default=2.0, gt=0.0)
+    sleep_min: float = Field(default=1.0, ge=0.0)
+    sleep_max: float = Field(default=3.0, ge=0.0)
+    overwrite: bool = False
+    location_name: str | None = None
+    provider_options: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("bbox")
+    @classmethod
+    def validate_bbox(cls, value: str) -> str:
+        return _validate_bbox(value)
+
+    @field_validator("categories")
+    @classmethod
+    def validate_categories(cls, value: list[str]) -> list[str]:
+        if not value:
+            raise ValueError("categories must not be empty")
+        bad = [c for c in value if c not in _OSM_ALLOWED_CATEGORIES]
+        if bad:
+            raise ValueError(f"unknown categories {bad}; allowed: {sorted(_OSM_ALLOWED_CATEGORIES)}")
+        seen: list[str] = []
+        for c in value:
+            if c not in seen:
+                seen.append(c)
+        return seen
+
+    @model_validator(mode="after")
+    def validate_invariants(self) -> "OsmConfig":
+        if self.sleep_max < self.sleep_min:
+            raise ValueError("sleep_max must be >= sleep_min")
+        if (self.target_width is None) != (self.target_height is None):
+            raise ValueError("target_width and target_height must be set together")
+        return self
