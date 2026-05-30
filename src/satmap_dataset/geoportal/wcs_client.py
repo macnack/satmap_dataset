@@ -31,3 +31,29 @@ def coverage_id(product: str, datum: str, options: dict[str, Any] | None = None)
     if datum not in _DATUM_TOKEN:
         raise ValueError(f"Unknown datum {datum!r}; expected one of {sorted(_DATUM_TOKEN)}")
     return template.format(prefix=_PRODUCT_PREFIX[product], datum=_DATUM_TOKEN[datum])
+
+
+def split_bbox(
+    bbox: tuple[float, float, float, float],
+    max_request_px: int,
+    gsd_m: float = 1.0,
+) -> list[tuple[float, float, float, float]]:
+    """Split an AOI bbox into non-overlapping sub-bboxes, each at most
+    ``max_request_px`` pixels per side at the given ground sample distance."""
+    if max_request_px < 1:
+        raise ValueError("max_request_px must be >= 1")
+    if gsd_m <= 0:
+        raise ValueError("gsd_m must be > 0")
+    xmin, ymin, xmax, ymax = bbox
+    span_m = max_request_px * gsd_m
+    nx = max(1, math.ceil((xmax - xmin) / span_m))
+    ny = max(1, math.ceil((ymax - ymin) / span_m))
+    tiles: list[tuple[float, float, float, float]] = []
+    for iy in range(ny):
+        y0 = ymin + iy * span_m
+        y1 = min(ymax, y0 + span_m)
+        for ix in range(nx):
+            x0 = xmin + ix * span_m
+            x1 = min(xmax, x0 + span_m)
+            tiles.append((x0, y0, x1, y1))
+    return tiles
