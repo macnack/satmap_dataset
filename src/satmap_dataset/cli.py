@@ -59,12 +59,12 @@ def _print_availability_table(report) -> None:
         console.print(
             f"  {e.product:<7} {e.datum:<9} {e.year}   {e.tile_count:<5} {cov:<13} {','.join(e.formats)}"
         )
-    empty = sorted(
-        {(e.product, e.datum) for e in report.entries}
-        - {(e.product, e.datum) for e in rows}
-    )
-    for product, datum in empty:
-        missing = sorted(e.year for e in report.entries if e.product == product and e.datum == datum and e.tile_count == 0)
+    combos = sorted({(e.product, e.datum) for e in report.entries})
+    for product, datum in combos:
+        missing = sorted(
+            e.year for e in report.entries
+            if e.product == product and e.datum == datum and e.tile_count == 0
+        )
         if missing:
             console.print(f"  [yellow]no data:[/yellow] {product}/{datum} {missing}")
     for combo, msg in report.errors.items():
