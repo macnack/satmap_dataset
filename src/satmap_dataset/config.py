@@ -395,6 +395,82 @@ class DemConfig(BaseModel):
         return list(range(self.year_start, self.year_end + 1))
 
 
+class DemAvailabilityConfig(BaseModel):
+    bbox: str
+    srs: str = "EPSG:2180"
+    products: list[str] = Field(default_factory=lambda: ["nmt", "nmpt"])
+    datums: list[str] = Field(default_factory=lambda: ["evrf2007", "kron86"])
+    year_start: int | None = Field(default=None, ge=1900)
+    year_end: int | None = Field(default=None, ge=1900)
+    location_name: str | None = None
+    timeout: float = Field(default=45.0, gt=0.0)
+    retries: int = Field(default=6, ge=1, le=20)
+    retry_delay: float = Field(default=1.0, gt=0.0)
+    sleep_min: float = Field(default=0.6, ge=0.0)
+    sleep_max: float = Field(default=2.2, ge=0.0)
+    output_json: Path = Path("artifacts/dem_availability.json")
+    provider: str = PROVIDER_GEOPORTAL
+    provider_options: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("bbox")
+    @classmethod
+    def validate_bbox(cls, value: str) -> str:
+        return _validate_bbox(value)
+
+    @field_validator("products")
+    @classmethod
+    def validate_products(cls, value: list[str]) -> list[str]:
+        allowed = {"nmt", "nmpt"}
+        normalized = [str(v).strip().lower() for v in value]
+        if not normalized:
+            raise ValueError("products must not be empty")
+        bad = [v for v in normalized if v not in allowed]
+        if bad:
+            raise ValueError(f"products must be a subset of {sorted(allowed)}; got {bad}")
+        seen: list[str] = []
+        for v in normalized:
+            if v not in seen:
+                seen.append(v)
+        return seen
+
+    @field_validator("datums")
+    @classmethod
+    def validate_datums(cls, value: list[str]) -> list[str]:
+        allowed = {"evrf2007", "kron86"}
+        normalized = [str(v).strip().lower() for v in value]
+        if not normalized:
+            raise ValueError("datums must not be empty")
+        bad = [v for v in normalized if v not in allowed]
+        if bad:
+            raise ValueError(f"datums must be a subset of {sorted(allowed)}; got {bad}")
+        seen: list[str] = []
+        for v in normalized:
+            if v not in seen:
+                seen.append(v)
+        return seen
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        if value not in ALLOWED_PROVIDERS:
+            raise ValueError(f"provider must be one of {sorted(ALLOWED_PROVIDERS)}")
+        return value
+
+    @model_validator(mode="after")
+    def validate_invariants(self) -> "DemAvailabilityConfig":
+        if self.sleep_max < self.sleep_min:
+            raise ValueError("sleep_max must be >= sleep_min")
+        if self.year_start is not None and self.year_end is not None and self.year_end < self.year_start:
+            raise ValueError("year_end must be >= year_start")
+        return self
+
+    @property
+    def requested_years(self) -> list[int] | None:
+        if self.year_start is None or self.year_end is None:
+            return None
+        return list(range(self.year_start, self.year_end + 1))
+
+
 _OSM_ALLOWED_CATEGORIES: frozenset[str] = frozenset({"buildings", "highways", "landuse", "water"})
 
 
