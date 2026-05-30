@@ -179,3 +179,32 @@ class DemManifest(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     run_parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class OsmCategoryAsset(BaseModel):
+    feature_count: int = Field(default=0, ge=0)
+    raster_path: str | None = None
+
+
+class OsmYearAsset(BaseModel):
+    year: int
+    snapshot_date: str
+    categories: dict[str, OsmCategoryAsset] = Field(default_factory=dict)
+    passed: bool = False
+    errors: list[str] = Field(default_factory=list)
+
+
+class OsmManifest(BaseModel):
+    kind: Literal["osm_manifest"] = "osm_manifest"
+    stage: Literal["osm"] = "osm"
+    generated_at: datetime = Field(default_factory=_utc_now)
+    bbox: str
+    bbox_wgs84: str
+    srs: str
+    target_width: int | None = None
+    target_height: int | None = None
+    categories: list[str] = Field(default_factory=list)
+    years: list[OsmYearAsset] = Field(default_factory=list)
+    passed: bool = False
+    errors: list[str] = Field(default_factory=list)
+    run_parameters: dict[str, Any] = Field(default_factory=dict)
