@@ -29,7 +29,13 @@ class OsmLayer(Layer):
         self, config: OsmConfig, grid: ReferenceGrid | None
     ) -> tuple[int, LayerManifest]:
         if grid is not None:
+            if grid.srs.upper() != config.srs.upper():
+                raise ValueError(
+                    f"OSM layer cannot rasterize onto a grid in a different CRS: grid.srs="
+                    f"{grid.srs!r} vs config.srs={config.srs!r}. Configure OSM in the grid's CRS."
+                )
             update = {
+                "target_bbox": grid.bbox,
                 "target_width": grid.width,
                 "target_height": grid.height,
                 # Prefer the injected grid over any stale render_manifest path.

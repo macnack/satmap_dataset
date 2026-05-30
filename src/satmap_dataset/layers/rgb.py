@@ -9,6 +9,7 @@ from satmap_dataset.models import (
     LayerYearAsset,
     ReferenceGrid,
 )
+from satmap_dataset.pipeline import render
 from satmap_dataset.pipeline.run_all import _run_rgb_pipeline
 
 _RGB_BANDS = ["red", "green", "blue"]
@@ -62,10 +63,11 @@ class RgbLayer(Layer):
             render_output.read_text(encoding="utf-8")
         )
         ref_grid = dm.grid or ReferenceGrid.from_render_manifest(dm)
+        assets_by_year = render._manifest_by_year(dm)
 
         years: list[LayerYearAsset] = []
         for year in dm.years_included:
-            rgb_path = _asset_for_year(dm.assets, year)
+            rgb_path = assets_by_year.get(year)
             years.append(
                 LayerYearAsset(
                     year=year,
@@ -93,6 +95,11 @@ class RgbLayer(Layer):
             assets=list(dm.assets),
             source_manifest=str(render_output),
             pixel_profile=dm.pixel_profile,
+            # Carry the flat grid fields too (mirrors render's manifest) so the
+            # validator's size + georef-bbox checks remain active for this manifest.
+            target_bbox=ref_grid.bbox,
+            target_width=ref_grid.width,
+            target_height=ref_grid.height,
             target_srs=ref_grid.srs,
             render_cache_signature=dm.render_cache_signature,
             diagnostics_report_path=dm.diagnostics_report_path,
@@ -110,11 +117,3 @@ class RgbLayer(Layer):
                 "render_backend": dm.render_backend,
             },
         )
-
-
-def _asset_for_year(assets: list[str], year: int) -> str | None:
-    token = f"year_{year}"
-    for asset in assets:
-        if token in Path(asset).name:
-            return asset
-    return None

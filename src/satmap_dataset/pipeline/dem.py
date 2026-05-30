@@ -159,9 +159,7 @@ def _resolve_align_grid(
     config: DemConfig,
 ) -> tuple[tuple[float, float, float, float], int, int]:
     if config.render_manifest and Path(config.render_manifest).exists():
-        manifest = LayerManifest.model_validate_json(
-            Path(config.render_manifest).read_text(encoding="utf-8")
-        )
+        manifest = LayerManifest.load(config.render_manifest)
         grid = manifest.grid
         if grid is not None:
             return (_parse_bbox(grid.bbox), int(grid.width), int(grid.height))

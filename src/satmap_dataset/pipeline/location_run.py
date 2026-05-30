@@ -32,8 +32,9 @@ def run_location(
     DEM and OSM layers so every modality lands on the same NN-ready raster grid
     without any layer re-reading another's manifest from disk.
 
-    Returns (exit_code, rgb_manifest_path). The exit code is the first nonzero
-    among RGB (+ optional validation), DEM, and OSM.
+    Returns (exit_code, rgb_manifest_path). The exit code is the most severe
+    (highest) among RGB (+ optional validation), DEM, and OSM, so a later
+    failure is never masked by an earlier one.
     """
     artifacts_dir = Path(artifacts_dir)
     rgb_layer = get_layer(f"{rgb_config.provider}_rgb")
@@ -50,12 +51,12 @@ def run_location(
     if run_dem and dem_config is not None:
         dem_code, dem_manifest = get_layer("dem").produce(dem_config, grid)
         _write_manifest(dem_manifest, dem_config.output_json)
-        overall = overall or dem_code
+        overall = max(overall, dem_code)
 
     if run_osm and osm_config is not None:
         osm_code, osm_manifest = get_layer("osm").produce(osm_config, grid)
         _write_manifest(osm_manifest, osm_config.output_json)
-        overall = overall or osm_code
+        overall = max(overall, osm_code)
 
     if validate:
         validate_output = artifacts_dir / "validation_report.json"
@@ -67,7 +68,7 @@ def run_location(
             output_json=validate_output,
         )
         validate_code, _ = validator.run(validate_config)
-        overall = overall or validate_code
+        overall = max(overall, validate_code)
 
     logger.info("run_location: finished code=%s rgb=%s", overall, rgb_output)
     return overall, rgb_output

@@ -27,6 +27,12 @@ class DemLayer(Layer):
         self, config: DemConfig, grid: ReferenceGrid | None
     ) -> tuple[int, LayerManifest]:
         if grid is not None:
+            if grid.srs.upper() != config.srs.upper():
+                raise ValueError(
+                    f"DEM layer cannot align to a grid in a different CRS: grid.srs="
+                    f"{grid.srs!r} vs config.srs={config.srs!r}. The alignment step does "
+                    "not reproject across CRS; configure the DEM in the grid's CRS."
+                )
             config = config.model_copy(
                 update={
                     "align_to_render": True,

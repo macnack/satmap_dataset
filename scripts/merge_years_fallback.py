@@ -14,7 +14,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from satmap_dataset.models import DatasetManifest
+from satmap_dataset.models import LayerManifest
 from satmap_dataset.pipeline import render
 
 Image.MAX_IMAGE_PIXELS = None
@@ -22,8 +22,8 @@ Image.MAX_IMAGE_PIXELS = None
 LOG = logging.getLogger("merge_fallback")
 
 
-def _read_manifest(path: Path) -> DatasetManifest:
-    return DatasetManifest.model_validate_json(path.read_text(encoding="utf-8"))
+def _read_manifest(path: Path) -> LayerManifest:
+    return LayerManifest.load(path)
 
 
 def _as_rgb_u8(arr: np.ndarray) -> np.ndarray:

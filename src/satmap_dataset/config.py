@@ -482,6 +482,7 @@ class OsmConfig(BaseModel):
     render_manifest: Path | None = None
     year_date_map: dict[int, str] | None = None
     categories: list[str] = Field(default_factory=lambda: ["buildings", "roads", "paths", "green", "water"])
+    target_bbox: str | None = None
     target_width: int | None = Field(default=None, ge=1)
     target_height: int | None = Field(default=None, ge=1)
     overpass_url: str = "https://overpass.kumi.systems/api/interpreter"
@@ -520,4 +521,6 @@ class OsmConfig(BaseModel):
             raise ValueError("sleep_max must be >= sleep_min")
         if (self.target_width is None) != (self.target_height is None):
             raise ValueError("target_width and target_height must be set together")
+        if self.target_bbox is not None:
+            _validate_bbox(self.target_bbox)
         return self

@@ -270,7 +270,10 @@ def run(config: ValidateConfig) -> tuple[int, Path]:
         report.errors.append(f"Missing asset files: {len(missing_assets)}")
         report.passed = False
 
-    if dataset_manifest.pixel_profile != "RGB_U8":
+    # The RGB-specific asset checks (RGB_U8 profile, 3 bands, uint8) only apply to
+    # RGB-role manifests; DEM (float32) and OSM (mask) layers use other profiles.
+    is_rgb = dataset_manifest.role == "rgb"
+    if is_rgb and dataset_manifest.pixel_profile != "RGB_U8":
         report.errors.append(f"Invalid pixel profile: {dataset_manifest.pixel_profile}")
         report.passed = False
 
@@ -304,10 +307,10 @@ def run(config: ValidateConfig) -> tuple[int, Path]:
                         f"Invalid asset size for {asset}: {width}x{height} expected {width_ref}x{height_ref}"
                     )
                     report.passed = False
-            if samples != 3:
+            if is_rgb and samples != 3:
                 report.errors.append(f"Invalid band count for {asset}: {samples} expected 3")
                 report.passed = False
-            if dtype != "uint8":
+            if is_rgb and dtype != "uint8":
                 report.errors.append(f"Invalid dtype for {asset}: {dtype} expected uint8")
                 report.passed = False
 

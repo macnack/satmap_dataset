@@ -23,9 +23,7 @@ def _read_year_date_map(config: OsmConfig) -> dict[int, str]:
     if config.year_date_map is not None:
         return dict(config.year_date_map)
     if config.render_manifest is not None and Path(config.render_manifest).exists():
-        manifest = LayerManifest.model_validate_json(
-            Path(config.render_manifest).read_text(encoding="utf-8")
-        )
+        manifest = LayerManifest.load(config.render_manifest)
         if manifest.grid is not None and manifest.grid.year_date_map:
             return dict(manifest.grid.year_date_map)
         result: dict[int, str] = {}
@@ -44,9 +42,7 @@ def _read_grid(config: OsmConfig) -> tuple[int, int]:
     if config.target_width is not None and config.target_height is not None:
         return config.target_width, config.target_height
     if config.render_manifest is not None and Path(config.render_manifest).exists():
-        manifest = LayerManifest.model_validate_json(
-            Path(config.render_manifest).read_text(encoding="utf-8")
-        )
+        manifest = LayerManifest.load(config.render_manifest)
         if manifest.grid is not None:
             return int(manifest.grid.width), int(manifest.grid.height)
         if manifest.target_width is not None and manifest.target_height is not None:
@@ -69,7 +65,7 @@ def build_osm_layer_manifest(
     grid: ReferenceGrid | None = None
     if target_width is not None and target_height is not None:
         grid = ReferenceGrid(
-            bbox=config.bbox,
+            bbox=config.target_bbox or config.bbox,
             width=target_width,
             height=target_height,
             srs=config.srs,
@@ -130,8 +126,22 @@ async def _run_async(config: OsmConfig) -> tuple[int, Path]:
         return 1, config.output_json
 
     target_width, target_height = _read_grid(config)
-    target_bbox = tuple(float(x) for x in config.bbox.split(","))
-    bbox_wgs84 = bbox_epsg2180_to_wgs84(config.bbox)
+    # The Overpass query bbox is derived via bbox_epsg2180_to_wgs84, which only
+    # supports EPSG:2180; fail clearly rather than silently querying a wrong AOI.
+    if config.srs.strip().upper() != "EPSG:2180":
+        manifest = build_osm_layer_manifest(
+            config, [], bbox_wgs84="", target_width=None, target_height=None,
+            passed=False,
+            errors=[f"OSM stage only supports srs=EPSG:2180, got {config.srs!r}."],
+        )
+        config.output_json.parent.mkdir(parents=True, exist_ok=True)
+        config.output_json.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+        return 1, config.output_json
+    # Rasterize onto the authoritative grid extent: prefer the injected
+    # target_bbox (the RGB ReferenceGrid bbox) over the raw AOI bbox.
+    effective_bbox = config.target_bbox or config.bbox
+    target_bbox = tuple(float(x) for x in effective_bbox.split(","))
+    bbox_wgs84 = bbox_epsg2180_to_wgs84(effective_bbox)
     retry_policy = RetryPolicy(
         max_attempts=config.retries, backoff_seconds=config.retry_delay
     )

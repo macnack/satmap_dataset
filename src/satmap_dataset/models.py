@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 
 def _utc_now() -> datetime:
@@ -287,3 +289,27 @@ class LayerManifest(BaseModel):
     resample_method: str | None = None
     render_backend: Literal["pyvips"] | None = None
     asset_stats: dict[str, dict[str, int | str | None]] = Field(default_factory=dict)
+
+    @classmethod
+    def load(cls, path: Path | str) -> "LayerManifest":
+        """Parse a LayerManifest from disk with a clear error for stale formats.
+
+        A pre-migration manifest (kind ``dataset_manifest``/``dem_manifest``/
+        ``osm_manifest``) fails the ``layer_manifest`` discriminator; surface a
+        re-run hint instead of a raw pydantic ValidationError.
+        """
+        text = Path(path).read_text(encoding="utf-8")
+        try:
+            return cls.model_validate_json(text)
+        except ValidationError as exc:
+            try:
+                kind = json.loads(text).get("kind")
+            except Exception:
+                kind = None
+            if kind and kind != "layer_manifest":
+                raise ValueError(
+                    f"{path} has kind={kind!r}, not a LayerManifest — this looks like a "
+                    "pre-migration manifest. Re-run the producing stage (render/dem/osm) "
+                    "to regenerate it."
+                ) from exc
+            raise
