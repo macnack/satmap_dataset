@@ -27,11 +27,16 @@ def _iter_featuretype_names(root: ET.Element) -> list[str]:
     return names
 
 
-def _extract_year_typenames(cap_root: ET.Element) -> dict[int, str]:
+DEFAULT_TYPENAME_PATTERN = re.compile(r"SkorowidzOrtof\w*?(\d{4})$", re.IGNORECASE)
+
+
+def _extract_year_typenames(
+    cap_root: ET.Element, pattern: "re.Pattern[str] | None" = None
+) -> dict[int, str]:
+    regex = pattern or DEFAULT_TYPENAME_PATTERN
     year_to_typename: dict[int, str] = {}
-    pattern = re.compile(r"SkorowidzOrtof\w*?(\d{4})$", re.IGNORECASE)
     for name in _iter_featuretype_names(cap_root):
-        match = pattern.search(name)
+        match = regex.search(name)
         if not match:
             continue
         year = int(match.group(1))
@@ -181,6 +186,7 @@ async def get_capabilities(
     *,
     timeout: float = 20.0,
     retry_policy: RetryPolicy | None = None,
+    typename_pattern: "re.Pattern[str] | None" = None,
 ) -> tuple[ET.Element, dict[int, str]]:
     response = await request_with_retry(
         "GET",
@@ -190,7 +196,7 @@ async def get_capabilities(
         retry_policy=retry_policy,
     )
     root = ET.fromstring(response.text)
-    return root, _extract_year_typenames(root)
+    return root, _extract_year_typenames(root, typename_pattern)
 
 
 async def get_feature_count(
