@@ -129,6 +129,21 @@ class YearAvailabilityReport(BaseModel):
     run_parameters: dict[str, Any] = Field(default_factory=dict)
 
 
+class DemYearAsset(BaseModel):
+    year: int = Field(..., ge=1900)
+    native_path: str | None = None
+    native_width: int | None = None
+    native_height: int | None = None
+    aligned_path: str | None = None
+    aligned_width: int | None = None
+    aligned_height: int | None = None
+    tile_count: int = Field(default=0, ge=0)
+    mean_height_error: float | None = None  # not populated yet (would require extending wfs_client return)
+    godla: list[str] = Field(default_factory=list)
+    passed: bool = False
+    errors: list[str] = Field(default_factory=list)
+
+
 class DemProductAsset(BaseModel):
     product: Literal["nmt", "nmpt"]
     coverage_id: str
@@ -143,6 +158,7 @@ class DemProductAsset(BaseModel):
     nodata: float | None = None  # not yet populated; would require WCS DescribeCoverage
     passed: bool = False
     errors: list[str] = Field(default_factory=list)
+    years: list[DemYearAsset] = Field(default_factory=list)
 
 
 class DemManifest(BaseModel):
@@ -153,6 +169,9 @@ class DemManifest(BaseModel):
     bbox: str
     srs: str
     vertical_datum: str
+    transport: Literal["wcs", "skorowidz"] = "wcs"
+    years_requested: list[int] = Field(default_factory=list)
+    years_skipped: dict[int, str] = Field(default_factory=dict)
     products: list[DemProductAsset] = Field(default_factory=list)
     align_to_render: bool = True
     passed: bool = False
