@@ -13,6 +13,7 @@ dependencies = [
   "aiofiles",
   "numpy",
   "pydantic>=2",
+  "pyproj",
   "typer",
   "rich",
   "Pillow",

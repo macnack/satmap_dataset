@@ -1,9 +1,14 @@
 import json
+import sys
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 from typer.testing import CliRunner
+
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from satmap_dataset.cli import (
     app,
@@ -111,3 +116,12 @@ def test_osm_json_command_bad_config_exit_2(tmp_path):
     params.write_text(json.dumps({"bbox": "10,10,0,0"}))
     result = runner.invoke(app, ["osm-json", str(params)])
     assert result.exit_code == 2
+
+
+def test_manage_roots_knows_osm_kind(tmp_path):
+    import scripts.manage_location_roots as mlr
+
+    assert "osm" in mlr.KINDS
+    payload = {"location_name": "Poznań"}
+    path = mlr._path_for_kind(payload, "osm", tmp_path)
+    assert str(path).endswith("osm_poznan")

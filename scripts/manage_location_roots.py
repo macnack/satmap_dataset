@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Iterable
 
 
-KINDS = ("downloads", "rendered", "artifacts", "dem")
+KINDS = ("downloads", "rendered", "artifacts", "dem", "osm")
 
 
 @dataclass(frozen=True)
@@ -50,6 +50,7 @@ def _path_for_kind(payload: dict[str, object], kind: str, repo_root: Path) -> Pa
         "rendered": "render_root",
         "artifacts": "artifacts_dir",
         "dem": "dem_root",
+        "osm": "osm_root",
     }
     key = mapping[kind]
     value = payload.get(key)

@@ -77,3 +77,11 @@ dem-location-json location_json:
 # Download ISOK elevation for all locations in the default dir
 dem-all-json:
   python -m satmap_dataset.cli dem-all-location-json
+
+# Download OSM semantic labels for a single location
+osm-location-json location_json:
+    python -m satmap_dataset.cli osm-location-json {{location_json}}
+
+# Download OSM semantic labels for all locations in the default dir
+osm-all-json:
+    python -m satmap_dataset.cli osm-all-location-json

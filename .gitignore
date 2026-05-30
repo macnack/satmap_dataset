@@ -2,6 +2,7 @@ artifact*/
 rendered*/
 download*/
 dem_*/
+osm_*/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
