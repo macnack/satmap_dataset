@@ -130,7 +130,8 @@ else the existing WCS `asyncio.run(_run_async(config))`. No other change to the 
 
 - New `DemYearAsset`: `year: int`, `native_path`/`native_width`/`native_height`,
   `aligned_path`/`aligned_width`/`aligned_height`, `tile_count: int`,
-  `mean_height_error: float | None` (max `blad_sr_wys` across tiles), `godla: list[str]`,
+  `mean_height_error: float | None` (reserved; left `None` in this version — populating it
+  would require extending the shared `wfs_client.get_year_tiles` return type), `godla: list[str]`,
   `passed: bool`, `errors: list[str]`.
 - `DemProductAsset` gains `years: list[DemYearAsset] = []` (populated only for
   skorowidz; empty for wcs). WCS flat fields unchanged.

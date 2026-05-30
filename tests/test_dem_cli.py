@@ -76,3 +76,49 @@ def test_manage_roots_knows_dem_kind(tmp_path):
     payload = {"location_name": "Poznań"}
     path = mlr._path_for_kind(payload, "dem", tmp_path)
     assert str(path).endswith("dem_poznan")
+
+
+def test_dem_json_skorowidz_dispatches(tmp_path, monkeypatch):
+    captured = {}
+
+    def _fake_run(config):
+        captured["config"] = config
+        out = tmp_path / "m.json"
+        out.write_text("{}")
+        return (0, out)
+
+    monkeypatch.setattr("satmap_dataset.pipeline.dem_skorowidz.run", _fake_run)
+    params = tmp_path / "p.json"
+    params.write_text(json.dumps({
+        "bbox": "210300,521900,210500,522100", "transport": "skorowidz",
+        "year_start": 2012, "year_end": 2019, "products": ["nmt"], "align_to_render": False,
+        "dem_root": str(tmp_path / "dem_x"), "output_json": str(tmp_path / "m.json"),
+    }))
+    result = runner.invoke(app, ["dem-json", str(params)])
+    assert result.exit_code == 0
+    assert captured["config"].transport == "skorowidz"
+    assert captured["config"].requested_years == list(range(2012, 2020))
+
+
+def test_dem_flag_transport_year_options(tmp_path, monkeypatch):
+    captured = {}
+    monkeypatch.setattr("satmap_dataset.pipeline.dem_skorowidz.run",
+                        lambda config: (captured.setdefault("c", config), (0, tmp_path / "m.json"))[1])
+    result = runner.invoke(app, [
+        "dem", "--bbox", "0,0,100,100", "--transport", "skorowidz",
+        "--year-start", "2012", "--year-end", "2014", "--products", "nmt", "--no-align",
+        "--dem-root", str(tmp_path / "dem_x"), "--output-json", str(tmp_path / "m.json"),
+    ])
+    assert result.exit_code == 0
+    assert captured["c"].transport == "skorowidz"
+    assert captured["c"].requested_years == [2012, 2013, 2014]
+
+
+def test_dem_location_builder_inherits_years_from_base(tmp_path):
+    base = tmp_path / "base.json"
+    base.write_text(json.dumps({"transport": "skorowidz", "year_start": 2011, "year_end": 2019}))
+    loc = tmp_path / "location_x.json"
+    loc.write_text(json.dumps({"location_name": "Test", "center_lat": 52.4, "center_lon": 16.9, "square_km": 1.0}))
+    cfg = _build_dem_config_from_base_and_location(base_json=base, location_json=loc)
+    assert cfg.transport == "skorowidz"
+    assert cfg.requested_years == list(range(2011, 2020))

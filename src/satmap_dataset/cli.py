@@ -1387,6 +1387,9 @@ def dem_json_command(
 def dem_command(
     bbox: str = typer.Option(None, "--bbox", help="xmin,ymin,xmax,ymax in --srs."),
     srs: str = typer.Option("EPSG:2180", "--srs"),
+    transport: str = typer.Option("wcs", "--transport", help="wcs (current composite) or skorowidz (historical per-year)."),
+    year_start: int = typer.Option(None, "--year-start", help="First year (skorowidz transport)."),
+    year_end: int = typer.Option(None, "--year-end", help="Last year (skorowidz transport)."),
     center_lat: float = typer.Option(None, "--center-lat"),
     center_lon: float = typer.Option(None, "--center-lon"),
     square_km: float = typer.Option(None, "--square-km"),
@@ -1403,6 +1406,9 @@ def dem_command(
         payload: dict[str, object] = {
             "bbox": bbox,
             "srs": srs,
+            "transport": transport,
+            "year_start": year_start,
+            "year_end": year_end,
             "center_lat": center_lat,
             "center_lon": center_lon,
             "square_km": square_km,
