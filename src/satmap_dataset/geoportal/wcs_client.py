@@ -57,3 +57,44 @@ def split_bbox(
             x1 = min(xmax, x0 + span_m)
             tiles.append((x0, y0, x1, y1))
     return tiles
+
+
+async def get_coverage(
+    endpoint: str,
+    coverage_id_value: str,
+    sub_bbox: tuple[float, float, float, float],
+    srs: str,
+    *,
+    options: dict[str, Any] | None = None,
+    timeout: float = 120.0,
+    retry_policy: RetryPolicy | None = None,
+    client: Any | None = None,
+) -> bytes:
+    """Issue a WCS 2.0.1 GetCoverage and return the GeoTIFF bytes."""
+    options = options or {}
+    axis_x = str(options.get("axis_label_x", "x"))
+    axis_y = str(options.get("axis_label_y", "y"))
+    fmt = str(options.get("format", "image/tiff"))
+    epsg = srs.split(":")[-1]
+    subsetting_crs = str(
+        options.get("subsetting_crs", f"http://www.opengis.net/def/crs/EPSG/0/{epsg}")
+    )
+    xmin, ymin, xmax, ymax = sub_bbox
+    params: dict[str, Any] = {
+        "SERVICE": "WCS",
+        "VERSION": str(options.get("wcs_version", "2.0.1")),
+        "REQUEST": "GetCoverage",
+        "COVERAGEID": coverage_id_value,
+        "FORMAT": fmt,
+        "SUBSETTINGCRS": subsetting_crs,
+        "SUBSET": [f"{axis_x}({xmin},{xmax})", f"{axis_y}({ymin},{ymax})"],
+    }
+    response = await request_with_retry(
+        "GET",
+        endpoint,
+        params=params,
+        timeout=timeout,
+        retry_policy=retry_policy,
+        client=client,
+    )
+    return response.content

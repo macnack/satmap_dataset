@@ -46,3 +46,38 @@ def test_split_bbox_tiles_and_covers_exactly():
 def test_split_bbox_rejects_bad_cap():
     with pytest.raises(ValueError):
         wcs_client.split_bbox((0, 0, 10, 10), max_request_px=0)
+
+
+import asyncio
+
+
+def test_get_coverage_builds_wcs_params(monkeypatch):
+    captured = {}
+
+    class _FakeResponse:
+        content = b"GEOTIFF-BYTES"
+
+    async def _fake_request(method, url, *, params, timeout, retry_policy, client=None):
+        captured["method"] = method
+        captured["url"] = url
+        captured["params"] = params
+        return _FakeResponse()
+
+    monkeypatch.setattr(wcs_client, "request_with_retry", _fake_request)
+
+    data = asyncio.run(
+        wcs_client.get_coverage(
+            "https://example/wcs",
+            "DTM_PL-EVRF2007-NH_TIFF",
+            (10.0, 20.0, 30.0, 40.0),
+            "EPSG:2180",
+        )
+    )
+    assert data == b"GEOTIFF-BYTES"
+    params = captured["params"]
+    assert params["SERVICE"] == "WCS"
+    assert params["REQUEST"] == "GetCoverage"
+    assert params["COVERAGEID"] == "DTM_PL-EVRF2007-NH_TIFF"
+    assert params["VERSION"] == "2.0.1"
+    assert params["SUBSET"] == ["x(10.0,30.0)", "y(20.0,40.0)"]
+    assert params["SUBSETTINGCRS"].endswith("/2180")
