@@ -85,3 +85,11 @@ osm-location-json location_json:
 # Download OSM semantic labels for all locations in the default dir
 osm-all-json:
     python -m satmap_dataset.cli osm-all-location-json
+
+# Report available NMT/NMPT skorowidz data for a single location (no download)
+dem-availability location_json:
+  python -m satmap_dataset.cli dem-availability-location-json {{location_json}}
+
+# Report availability for all locations in the default dir
+dem-availability-all:
+  python -m satmap_dataset.cli dem-availability-all-location-json

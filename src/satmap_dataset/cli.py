@@ -18,6 +18,7 @@ import httpx
 from satmap_dataset.models import IndexManifest
 from satmap_dataset.logging_utils import configure_logging
 from satmap_dataset.config import (
+    DemAvailabilityConfig,
     DemConfig,
     DownloadConfig,
     IndexConfig,
@@ -26,7 +27,7 @@ from satmap_dataset.config import (
     RunConfig,
     ValidateConfig,
 )
-from satmap_dataset.pipeline import dem, downloader, index_builder, render, run_all, validator, osm as osm_pipeline
+from satmap_dataset.pipeline import dem, dem_availability, downloader, index_builder, render, run_all, validator, osm as osm_pipeline
 from satmap_dataset.providers import get_provider
 
 app = typer.Typer(help="satmap_dataset CLI (WFS-first pipeline)", no_args_is_help=True)
@@ -44,6 +45,30 @@ def _print_validation_error(error: ValidationError) -> None:
 def _finish(exit_code: int, artifact_path: Path) -> None:
     typer.echo(str(artifact_path))
     raise typer.Exit(code=exit_code)
+
+
+def _print_availability_table(report) -> None:
+    rows = sorted(
+        [e for e in report.entries if e.tile_count > 0],
+        key=lambda e: (e.product, e.datum, e.year),
+    )
+    console.print(f"[cyan]DEM availability[/cyan] AOI={report.aoi_bbox} ({report.srs})")
+    console.print("  product datum     year  tiles  coverage      formats")
+    for e in rows:
+        cov = e.coverage if e.coverage != "partial" else f"partial({e.coverage_pct:g}%)"
+        console.print(
+            f"  {e.product:<7} {e.datum:<9} {e.year}   {e.tile_count:<5} {cov:<13} {','.join(e.formats)}"
+        )
+    empty = sorted(
+        {(e.product, e.datum) for e in report.entries}
+        - {(e.product, e.datum) for e in rows}
+    )
+    for product, datum in empty:
+        missing = sorted(e.year for e in report.entries if e.product == product and e.datum == datum and e.tile_count == 0)
+        if missing:
+            console.print(f"  [yellow]no data:[/yellow] {product}/{datum} {missing}")
+    for combo, msg in report.errors.items():
+        console.print(f"  [red]error:[/red] {combo}: {msg}")
 
 
 _CENTER_MODE_SUPPORTED_SRS = {"EPSG:2180", "EPSG:3006"}
@@ -346,6 +371,20 @@ def _build_dem_config_from_base_and_location(*, base_json: Path, location_json: 
     if artifacts_dir is not None and merged.get("align_to_render", True):
         merged.setdefault("render_manifest", str(Path(str(artifacts_dir)) / "dataset_manifest_render.json"))
     return DemConfig.model_validate(merged)
+
+
+def _build_dem_availability_config_from_base_and_location(*, base_json: Path, location_json: Path) -> DemAvailabilityConfig:
+    base_payload = _load_params_json_dict(base_json)
+    location_payload = _load_params_json_dict(location_json)
+    merged: dict[str, object] = dict(base_payload)
+    merged.update(location_payload)
+    repo_root = base_json.resolve().parents[2] if len(base_json.resolve().parents) >= 3 else Path.cwd().resolve()
+    merged = _apply_location_paths_policy(merged, repo_root)
+    merged = _resolve_json_center_bbox(merged, required=True)
+    artifacts_dir = merged.get("artifacts_dir")
+    if artifacts_dir is not None:
+        merged.setdefault("output_json", str(Path(str(artifacts_dir)) / "dem_availability.json"))
+    return DemAvailabilityConfig.model_validate(merged)
 
 
 def _build_osm_config_from_base_and_location(*, base_json: Path, location_json: Path) -> OsmConfig:
@@ -1635,6 +1674,82 @@ def osm_all_location_json_command(
 
     if failures:
         console.print("[yellow]osm-all-location-json finished with failures:[/yellow]")
+        for entry in failures:
+            console.print(f"- {entry}")
+        raise typer.Exit(code=1)
+    raise typer.Exit(code=0)
+
+
+@app.command("dem-availability-json")
+def dem_availability_json_command(
+    params_json: Path = typer.Argument(..., help="JSON with DemAvailabilityConfig fields (center_lat/lon + square_km|area_km2 supported)."),
+) -> None:
+    try:
+        payload = _load_params_json_dict(params_json)
+        payload = _resolve_json_center_bbox(payload, required=True)
+        config = DemAvailabilityConfig.model_validate(payload)
+    except typer.BadParameter as error:
+        console.print(f"[red]{error}[/red]")
+        raise typer.Exit(code=2) from error
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+
+    exit_code, artifact_path = dem_availability.run(config)
+    from satmap_dataset.models import DemAvailabilityReport
+    _print_availability_table(DemAvailabilityReport.model_validate_json(artifact_path.read_text(encoding="utf-8")))
+    _finish(exit_code, artifact_path)
+
+
+@app.command("dem-availability-location-json")
+def dem_availability_location_json_command(
+    location_json: Path = typer.Argument(..., help="Location JSON (location_name, center_lat, center_lon)."),
+    base_json: Path = typer.Option(Path("configs/run/base.json"), "--base-json", help="Base JSON with shared parameters."),
+) -> None:
+    try:
+        config = _build_dem_availability_config_from_base_and_location(base_json=base_json, location_json=location_json)
+    except typer.BadParameter as error:
+        console.print(f"[red]{error}[/red]")
+        raise typer.Exit(code=2) from error
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+
+    exit_code, artifact_path = dem_availability.run(config)
+    from satmap_dataset.models import DemAvailabilityReport
+    _print_availability_table(DemAvailabilityReport.model_validate_json(artifact_path.read_text(encoding="utf-8")))
+    _finish(exit_code, artifact_path)
+
+
+@app.command("dem-availability-all-location-json")
+def dem_availability_all_location_json_command(
+    locations_dir: Path = typer.Option(Path("configs/run/locations"), "--locations-dir", help="Directory with location JSON files."),
+    base_json: Path = typer.Option(Path("configs/run/base.json"), "--base-json", help="Base JSON with shared parameters."),
+    continue_on_error: bool = typer.Option(False, "--continue-on-error/--no-continue-on-error", help="Continue when one location fails."),
+) -> None:
+    location_files = _location_files_or_exit(locations_dir)
+    failures: list[str] = []
+    for location_json in location_files:
+        console.print(f"[cyan]dem-availability:[/cyan] {location_json}")
+        try:
+            config = _build_dem_availability_config_from_base_and_location(base_json=base_json, location_json=location_json)
+        except (typer.BadParameter, ValidationError) as error:
+            if isinstance(error, ValidationError):
+                _print_validation_error(error)
+            else:
+                console.print(f"[red]{error}[/red]")
+            failures.append(f"{location_json}: invalid")
+            if not continue_on_error:
+                raise typer.Exit(code=2) from error
+            continue
+        exit_code, artifact_path = dem_availability.run(config)
+        console.print(str(artifact_path))
+        if exit_code != 0:
+            failures.append(f"{location_json}: exit={exit_code}")
+            if not continue_on_error:
+                raise typer.Exit(code=exit_code)
+    if failures:
+        console.print("[yellow]dem-availability-all finished with failures:[/yellow]")
         for entry in failures:
             console.print(f"- {entry}")
         raise typer.Exit(code=1)
