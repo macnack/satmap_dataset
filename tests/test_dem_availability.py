@@ -47,3 +47,34 @@ def test_availability_config_defaults_and_validation():
         DemAvailabilityConfig(bbox="0,0,10,10", datums=["pl1965"])
     assert DemAvailabilityConfig(bbox="0,0,10,10", products=["NMT"]).products == ["nmt"]
     assert DemAvailabilityConfig(bbox="0,0,10,10", datums=["KRON86"]).datums == ["kron86"]
+
+
+from satmap_dataset.pipeline import dem_availability as dav
+
+
+def test_coverage_full_partial_none():
+    aoi = (0.0, 0.0, 100.0, 100.0)
+    assert dav._coverage_pct(aoi, [(0.0, 0.0, 100.0, 100.0)]) == 100.0
+    half = dav._coverage_pct(aoi, [(0.0, 0.0, 50.0, 100.0)])
+    assert 45.0 <= half <= 55.0
+    assert dav._coverage_pct(aoi, []) == 0.0
+    two = dav._coverage_pct(aoi, [(0.0, 0.0, 50.0, 100.0), (50.0, 0.0, 100.0, 100.0)])
+    assert two == 100.0
+
+
+def test_classify_coverage():
+    assert dav._classify(100.0) == "full"
+    assert dav._classify(99.95) == "full"
+    assert dav._classify(60.0) == "partial"
+    assert dav._classify(0.0) == "none"
+
+
+def test_formats_from_urls():
+    urls = [
+        "https://x/a_M-1-1.asc",
+        "https://x/b_M-1-2.xyz.zip",
+        "https://x/c_M-1-3.zip",
+        "https://x/d_M-1-4.xyz",
+        "https://x/e_M-1-5.tif",
+    ]
+    assert dav._formats_from_urls(urls) == ["asc", "tif", "xyz", "xyz.zip", "zip"]
