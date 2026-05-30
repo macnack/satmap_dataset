@@ -18,13 +18,14 @@ import httpx
 from satmap_dataset.models import IndexManifest
 from satmap_dataset.logging_utils import configure_logging
 from satmap_dataset.config import (
+    DemConfig,
     DownloadConfig,
     IndexConfig,
     RenderConfig,
     RunConfig,
     ValidateConfig,
 )
-from satmap_dataset.pipeline import downloader, index_builder, render, run_all, validator
+from satmap_dataset.pipeline import dem, downloader, index_builder, render, run_all, validator
 from satmap_dataset.providers import get_provider
 
 app = typer.Typer(help="satmap_dataset CLI (WFS-first pipeline)", no_args_is_help=True)
@@ -244,6 +245,7 @@ def _apply_location_paths_policy(payload: dict[str, object], repo_root: Path) ->
     normalized.setdefault("download_root", str(repo_root / f"downloads_{slug}"))
     normalized.setdefault("render_root", str(repo_root / f"rendered_{slug}"))
     normalized.setdefault("artifacts_dir", str(repo_root / f"artifacts_{slug}"))
+    normalized.setdefault("dem_root", str(repo_root / f"dem_{slug}"))
     return normalized
 
 
@@ -326,6 +328,22 @@ def _build_render_config_from_base_and_location(*, base_json: Path, location_jso
     merged.setdefault("dataset_manifest", str(artifacts_dir / "dataset_manifest_download.json"))
     merged.setdefault("output_json", str(artifacts_dir / "dataset_manifest_render.json"))
     return RenderConfig.model_validate(merged)
+
+
+def _build_dem_config_from_base_and_location(*, base_json: Path, location_json: Path) -> DemConfig:
+    base_payload = _load_params_json_dict(base_json)
+    location_payload = _load_params_json_dict(location_json)
+    merged: dict[str, object] = dict(base_payload)
+    merged.update(location_payload)
+    repo_root = base_json.resolve().parents[2] if len(base_json.resolve().parents) >= 3 else Path.cwd().resolve()
+    merged = _apply_location_paths_policy(merged, repo_root)
+    merged = _resolve_json_center_bbox(merged, required=True)
+    dem_root = Path(str(merged.get("dem_root", "dem")))
+    merged.setdefault("output_json", str(dem_root / "dem_manifest.json"))
+    artifacts_dir = merged.get("artifacts_dir")
+    if artifacts_dir is not None and merged.get("align_to_render", True):
+        merged.setdefault("render_manifest", str(Path(str(artifacts_dir)) / "dataset_manifest_render.json"))
+    return DemConfig.model_validate(merged)
 
 
 def _location_files_or_exit(locations_dir: Path) -> list[Path]:
@@ -1319,6 +1337,146 @@ def validate_all_location_json_command(
 
     if failures:
         console.print("[yellow]validate-all-location-json finished with failures:[/yellow]")
+        for entry in failures:
+            console.print(f"- {entry}")
+        raise typer.Exit(code=1)
+    raise typer.Exit(code=0)
+
+
+@app.command("dem-json")
+def dem_json_command(
+    params_json: Path = typer.Argument(
+        ...,
+        help="Path to JSON file with DemConfig fields. Supports center_lat/center_lon + square_km|area_km2.",
+    ),
+) -> None:
+    try:
+        payload = _load_params_json_dict(params_json)
+        payload = _resolve_json_center_bbox(payload, required=True)
+        config = DemConfig.model_validate(payload)
+    except typer.BadParameter as error:
+        console.print(f"[red]{error}[/red]")
+        raise typer.Exit(code=2) from error
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+
+    exit_code, artifact_path = dem.run(config)
+    _finish(exit_code, artifact_path)
+
+
+@app.command("dem")
+def dem_command(
+    bbox: str = typer.Option(None, "--bbox", help="xmin,ymin,xmax,ymax in --srs."),
+    srs: str = typer.Option("EPSG:2180", "--srs"),
+    center_lat: float = typer.Option(None, "--center-lat"),
+    center_lon: float = typer.Option(None, "--center-lon"),
+    square_km: float = typer.Option(None, "--square-km"),
+    products: str = typer.Option("nmt,nmpt", "--products", help="Comma-separated subset of nmt,nmpt."),
+    vertical_datum: str = typer.Option("evrf2007", "--vertical-datum", help="evrf2007 or kron86."),
+    dem_root: Path = typer.Option(Path("dem"), "--dem-root"),
+    align_to_render: bool = typer.Option(True, "--align/--no-align"),
+    render_manifest: Path = typer.Option(None, "--render-manifest"),
+    max_request_px: int = typer.Option(2048, "--max-request-px"),
+    overwrite: bool = typer.Option(False, "--overwrite"),
+    output_json: Path = typer.Option(None, "--output-json"),
+) -> None:
+    try:
+        payload: dict[str, object] = {
+            "bbox": bbox,
+            "srs": srs,
+            "center_lat": center_lat,
+            "center_lon": center_lon,
+            "square_km": square_km,
+            "products": [p.strip() for p in products.split(",") if p.strip()],
+            "vertical_datum": vertical_datum,
+            "dem_root": str(dem_root),
+            "align_to_render": align_to_render,
+            "max_request_px": max_request_px,
+            "overwrite": overwrite,
+        }
+        if render_manifest is not None:
+            payload["render_manifest"] = str(render_manifest)
+        payload["output_json"] = str(output_json) if output_json is not None else str(dem_root / "dem_manifest.json")
+        payload = _resolve_json_center_bbox(payload, required=True)
+        config = DemConfig.model_validate(payload)
+    except typer.BadParameter as error:
+        console.print(f"[red]{error}[/red]")
+        raise typer.Exit(code=2) from error
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+
+    exit_code, artifact_path = dem.run(config)
+    _finish(exit_code, artifact_path)
+
+
+@app.command("dem-location-json")
+def dem_location_json_command(
+    location_json: Path = typer.Argument(..., help="Path to location JSON (location_name, center_lat, center_lon)."),
+    base_json: Path = typer.Option(
+        Path("configs/run/base.json"), "--base-json",
+        help="Path to base JSON with shared parameters.",
+    ),
+) -> None:
+    try:
+        config = _build_dem_config_from_base_and_location(base_json=base_json, location_json=location_json)
+    except typer.BadParameter as error:
+        console.print(f"[red]{error}[/red]")
+        raise typer.Exit(code=2) from error
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+
+    exit_code, artifact_path = dem.run(config)
+    _finish(exit_code, artifact_path)
+
+
+@app.command("dem-all-location-json")
+def dem_all_location_json_command(
+    locations_dir: Path = typer.Option(
+        Path("configs/run/locations"), "--locations-dir",
+        help="Directory with location JSON files.",
+    ),
+    base_json: Path = typer.Option(
+        Path("configs/run/base.json"), "--base-json",
+        help="Path to base JSON with shared parameters.",
+    ),
+    continue_on_error: bool = typer.Option(
+        False, "--continue-on-error/--no-continue-on-error",
+        help="Continue with remaining locations when one fails.",
+    ),
+) -> None:
+    location_files = _location_files_or_exit(locations_dir)
+    failures: list[str] = []
+    for location_json in location_files:
+        console.print(f"[cyan]dem-all-location-json:[/cyan] {location_json}")
+        try:
+            config = _build_dem_config_from_base_and_location(
+                base_json=base_json, location_json=location_json,
+            )
+        except typer.BadParameter as error:
+            console.print(f"[red]{error}[/red]")
+            failures.append(f"{location_json}: {error}")
+            if not continue_on_error:
+                raise typer.Exit(code=2) from error
+            continue
+        except ValidationError as error:
+            _print_validation_error(error)
+            failures.append(f"{location_json}: validation_error")
+            if not continue_on_error:
+                raise typer.Exit(code=2) from error
+            continue
+
+        exit_code, artifact_path = dem.run(config)
+        console.print(str(artifact_path))
+        if exit_code != 0:
+            failures.append(f"{location_json}: exit={exit_code}")
+            if not continue_on_error:
+                raise typer.Exit(code=exit_code)
+
+    if failures:
+        console.print("[yellow]dem-all-location-json finished with failures:[/yellow]")
         for entry in failures:
             console.print(f"- {entry}")
         raise typer.Exit(code=1)
