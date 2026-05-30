@@ -127,3 +127,36 @@ class YearAvailabilityReport(BaseModel):
     aoi_preview_html: str | None = None
     aoi_preview_png: str | None = None
     run_parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class DemProductAsset(BaseModel):
+    product: Literal["nmt", "nmpt"]
+    coverage_id: str
+    endpoint: str
+    native_path: str | None = None
+    native_width: int | None = None
+    native_height: int | None = None
+    aligned_path: str | None = None
+    aligned_width: int | None = None
+    aligned_height: int | None = None
+    tile_count: int = Field(default=0, ge=0)
+    nodata: float | None = None
+    passed: bool = False
+    errors: list[str] = Field(default_factory=list)
+
+
+class DemManifest(BaseModel):
+    kind: Literal["dem_manifest"] = "dem_manifest"
+    stage: Literal["dem"] = "dem"
+    generated_at: datetime = Field(default_factory=_utc_now)
+    provider: str = "geoportal"
+    bbox: str
+    srs: str
+    vertical_datum: str
+    products: list[DemProductAsset] = Field(default_factory=list)
+    align_to_render: bool = True
+    passed: bool = False
+    notes: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    run_parameters: dict[str, Any] = Field(default_factory=dict)
