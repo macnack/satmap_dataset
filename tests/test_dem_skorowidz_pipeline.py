@@ -196,3 +196,21 @@ def test_run_swaps_bbox_axes_for_epsg2180_wfs_query(tmp_path, monkeypatch):
     dem_skorowidz.run(cfg)
     # EPSG:2180 WFS expects (ymin,xmin,ymax,xmax)
     assert captured["bbox"] == "508503.706,348967.353,509503.706,349967.353"
+
+
+def test_normalize_xyz_sorts_to_row_major(tmp_path):
+    raw = tmp_path / "t.xyz"
+    raw.write_text("0 0 1\n1 1 2\n0 1 3\n1 0 4\n")  # serpentine / unsorted (X Y Z)
+    out = dem_skorowidz._normalize_xyz(raw, tmp_path)
+    lines = [ln.split() for ln in out.read_text().splitlines() if ln.strip()]
+    ys = [float(ln[1]) for ln in lines]
+    assert ys == sorted(ys, reverse=True)  # Y descending (top-to-bottom rows)
+    # within the first row (Y=1), X ascending
+    assert lines[0][1] == "1" and lines[1][1] == "1"
+    assert float(lines[0][0]) <= float(lines[1][0])
+
+
+def test_normalize_xyz_passthrough_nonxyz(tmp_path):
+    a = tmp_path / "x.asc"
+    a.write_text("x")
+    assert dem_skorowidz._normalize_xyz(a, tmp_path) == a

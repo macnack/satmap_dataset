@@ -74,6 +74,34 @@ def _extract_if_zip(path: Path, dest_dir: Path) -> list[Path]:
     return extracted
 
 
+def _normalize_xyz(path: Path, dest_dir: Path) -> Path:
+    """Make a GUGiK .xyz grid readable by GDAL's XYZ driver.
+
+    GUGiK .xyz files use a serpentine row order that GDAL rejects with
+    "Ungridded dataset: change of Y direction", so the tile is silently skipped
+    by gdalbuildvrt (leaving a coverage gap). Re-sort to strict row-major
+    (Y descending, X ascending) and GDAL reads it as a regular grid. Non-.xyz
+    paths pass through unchanged.
+    """
+    if path.suffix.lower() != ".xyz":
+        return path
+    sorted_path = dest_dir / f"{path.stem}_sorted.xyz"
+    sort_bin = dem._tool_path("sort")
+    if sort_bin:
+        with open(sorted_path, "w") as out:
+            subprocess.run(
+                [sort_bin, "-k2,2nr", "-k1,1n", str(path)],
+                check=True, stdout=out, stderr=subprocess.PIPE, text=True,
+            )
+    else:  # pragma: no cover - coreutils sort is present on target platforms
+        import numpy as np
+
+        data = np.loadtxt(path)
+        order = np.lexsort((data[:, 0], -data[:, 1]))  # X ascending within Y descending
+        np.savetxt(sorted_path, data[order], fmt="%.2f")
+    return sorted_path
+
+
 async def _download_tiles(
     urls: list[str], dest_dir: Path, config: DemConfig
 ) -> list[Path]:
@@ -91,7 +119,8 @@ async def _download_tiles(
             )
             if not ok:
                 raise RuntimeError(f"download failed: {url}")
-            paths.extend(_extract_if_zip(out, dest_dir))
+            for grid in _extract_if_zip(out, dest_dir):
+                paths.append(_normalize_xyz(grid, dest_dir))
     return paths
 
 
