@@ -44,3 +44,8 @@ def test_osm_config_target_dims_paired():
 def test_osm_config_year_date_map():
     cfg = OsmConfig(bbox="0,0,10,10", year_date_map={2022: "2022-04-29", 2023: "2023-05-21"})
     assert cfg.year_date_map[2022] == "2022-04-29"
+
+
+def test_osm_config_categories_normalized():
+    cfg = OsmConfig(bbox="0,0,10,10", categories=["BUILDINGS", "Highways"])
+    assert cfg.categories == ["buildings", "highways"]

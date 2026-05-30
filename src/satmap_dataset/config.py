@@ -404,13 +404,14 @@ class OsmConfig(BaseModel):
     @field_validator("categories")
     @classmethod
     def validate_categories(cls, value: list[str]) -> list[str]:
-        if not value:
+        normalized = [str(item).strip().lower() for item in value]
+        if not normalized:
             raise ValueError("categories must not be empty")
-        bad = [c for c in value if c not in _OSM_ALLOWED_CATEGORIES]
+        bad = [c for c in normalized if c not in _OSM_ALLOWED_CATEGORIES]
         if bad:
             raise ValueError(f"unknown categories {bad}; allowed: {sorted(_OSM_ALLOWED_CATEGORIES)}")
         seen: list[str] = []
-        for c in value:
+        for c in normalized:
             if c not in seen:
                 seen.append(c)
         return seen
