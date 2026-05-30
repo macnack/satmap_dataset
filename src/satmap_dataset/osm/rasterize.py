@@ -42,7 +42,7 @@ def rasterize_geojson_to_file(
             subprocess.run(
                 [
                     "gdal_rasterize",
-                    "-burn", "1",
+                    "-burn", "255",
                     "-ts", str(target_width), str(target_height),
                     "-te", str(xmin), str(ymin), str(xmax), str(ymax),
                     "-ot", "Byte",

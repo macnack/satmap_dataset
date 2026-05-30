@@ -65,7 +65,7 @@ def test_rasterize_gdal_rasterize_args(tmp_path, monkeypatch):
         target_width=2000, target_height=2000, target_srs="EPSG:2180",
     )
     cmd = captured["cmd"]
-    assert "-burn" in cmd and "1" in cmd
+    assert "-burn" in cmd and "255" in cmd
     ts_idx = cmd.index("-ts")
     assert cmd[ts_idx + 1] == "2000" and cmd[ts_idx + 2] == "2000"
     te_idx = cmd.index("-te")
