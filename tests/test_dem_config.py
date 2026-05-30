@@ -40,3 +40,24 @@ def test_sleep_and_paired_target_dims():
         DemConfig(bbox="0,0,10,10", target_width=100)  # height missing
     ok = DemConfig(bbox="0,0,10,10", target_width=100, target_height=200)
     assert ok.target_width == 100 and ok.target_height == 200
+
+
+def test_transport_default_and_enum():
+    assert DemConfig(bbox="0,0,10,10").transport == "wcs"
+    assert DemConfig(bbox="0,0,10,10", transport="skorowidz", year_start=2012, year_end=2019).transport == "skorowidz"
+    with pytest.raises(ValidationError):
+        DemConfig(bbox="0,0,10,10", transport="ftp")
+
+
+def test_skorowidz_requires_valid_year_range():
+    with pytest.raises(ValidationError):
+        DemConfig(bbox="0,0,10,10", transport="skorowidz")  # years missing
+    with pytest.raises(ValidationError):
+        DemConfig(bbox="0,0,10,10", transport="skorowidz", year_start=2019, year_end=2012)  # reversed
+    cfg = DemConfig(bbox="0,0,10,10", transport="skorowidz", year_start=2012, year_end=2014)
+    assert cfg.requested_years == [2012, 2013, 2014]
+
+
+def test_wcs_ignores_year_range():
+    cfg = DemConfig(bbox="0,0,10,10")  # wcs, no years
+    assert cfg.requested_years == []

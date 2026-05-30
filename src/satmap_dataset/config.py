@@ -299,6 +299,9 @@ class RunConfig(BaseModel):
 class DemConfig(BaseModel):
     bbox: str
     srs: str = "EPSG:2180"
+    transport: str = "wcs"
+    year_start: int | None = Field(default=None, ge=1900)
+    year_end: int | None = Field(default=None, ge=1900)
     products: list[str] = Field(default_factory=lambda: ["nmt", "nmpt"])
     vertical_datum: str = "evrf2007"
     dem_root: Path = Path("dem")
@@ -319,6 +322,14 @@ class DemConfig(BaseModel):
     output_json: Path = Path("dem/dem_manifest.json")
     provider: str = PROVIDER_GEOPORTAL
     provider_options: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("transport")
+    @classmethod
+    def validate_transport(cls, value: str) -> str:
+        normalized = str(value).strip().lower()
+        if normalized not in {"wcs", "skorowidz"}:
+            raise ValueError("transport must be 'wcs' or 'skorowidz'")
+        return normalized
 
     @field_validator("bbox")
     @classmethod
@@ -370,7 +381,18 @@ class DemConfig(BaseModel):
             raise ValueError("sleep_max must be >= sleep_min")
         if (self.target_width is None) != (self.target_height is None):
             raise ValueError("target_width and target_height must be set together")
+        if self.transport == "skorowidz":
+            if self.year_start is None or self.year_end is None:
+                raise ValueError("year_start and year_end are required when transport='skorowidz'")
+            if self.year_end < self.year_start:
+                raise ValueError("year_end must be >= year_start")
         return self
+
+    @property
+    def requested_years(self) -> list[int]:
+        if self.year_start is None or self.year_end is None:
+            return []
+        return list(range(self.year_start, self.year_end + 1))
 
 
 _OSM_ALLOWED_CATEGORIES: frozenset[str] = frozenset({"buildings", "highways", "landuse", "water"})
