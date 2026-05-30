@@ -30,6 +30,10 @@ def test_build_dem_config_from_base_and_location(tmp_path):
     assert str(cfg.dem_root).endswith("dem_poznan")
     assert str(cfg.output_json).endswith("dem_manifest.json")
     assert cfg.bbox  # center resolved to a concrete bbox
+    # align_to_render defaults True -> render_manifest auto-points at the render manifest
+    assert cfg.render_manifest is not None
+    assert str(cfg.render_manifest).endswith("dataset_manifest_render.json")
+    assert "artifacts_poznan" in str(cfg.render_manifest)
 
 
 def test_dem_json_command_invokes_pipeline(tmp_path, monkeypatch):
