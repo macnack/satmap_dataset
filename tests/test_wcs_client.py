@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from satmap_dataset.geoportal import wcs_client
@@ -48,9 +50,6 @@ def test_split_bbox_rejects_bad_cap():
         wcs_client.split_bbox((0, 0, 10, 10), max_request_px=0)
 
 
-import asyncio
-
-
 def test_get_coverage_builds_wcs_params(monkeypatch):
     captured = {}
 
@@ -81,3 +80,23 @@ def test_get_coverage_builds_wcs_params(monkeypatch):
     assert params["VERSION"] == "2.0.1"
     assert params["SUBSET"] == ["x(10.0,30.0)", "y(20.0,40.0)"]
     assert params["SUBSETTINGCRS"].endswith("/2180")
+
+
+def test_endpoint_url_unknown_raises():
+    with pytest.raises(ValueError):
+        wcs_client.endpoint_url("lidar")
+
+
+def test_split_bbox_rejects_bad_gsd():
+    with pytest.raises(ValueError):
+        wcs_client.split_bbox((0, 0, 10, 10), max_request_px=100, gsd_m=0)
+
+
+def test_split_bbox_respects_gsd_for_pixel_cap():
+    # max_request_px=100 px at 0.5 m/px -> 50 m span; a 120 m wide bbox needs 3 cols.
+    tiles = wcs_client.split_bbox((0.0, 0.0, 120.0, 40.0), max_request_px=100, gsd_m=0.5)
+    cols = sorted({round(t[0], 6) for t in tiles})
+    assert cols == [0.0, 50.0, 100.0]
+    assert max(t[2] for t in tiles) == 120.0
+    for x0, _y0, x1, _y1 in tiles:
+        assert x1 - x0 <= 50.0 + 1e-9

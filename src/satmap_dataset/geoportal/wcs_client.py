@@ -70,7 +70,17 @@ async def get_coverage(
     retry_policy: RetryPolicy | None = None,
     client: Any | None = None,
 ) -> bytes:
-    """Issue a WCS 2.0.1 GetCoverage and return the GeoTIFF bytes."""
+    """Issue a WCS 2.0.1 GetCoverage and return the GeoTIFF bytes.
+
+    Axis labels for the SUBSET parameters default to ``"x"``/``"y"``. WCS 2.0.1
+    servers can be strict about matching the SUBSET axis names to the coverage's
+    CRS axis names — for EPSG:2180 some servers expect ``"E"``/``"N"`` instead.
+    If GetCoverage requests are rejected with an axis/subset error, override the
+    labels via ``options={"axis_label_x": "E", "axis_label_y": "N"}`` (and, if
+    needed, ``options["subsetting_crs"]`` / ``options["format"]`` /
+    ``options["wcs_version"]``). The correct values for the GUGiK NMT/NMPT WCS
+    must be confirmed against the live service.
+    """
     options = options or {}
     axis_x = str(options.get("axis_label_x", "x"))
     axis_y = str(options.get("axis_label_y", "y"))
