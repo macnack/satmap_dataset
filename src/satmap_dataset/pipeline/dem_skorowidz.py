@@ -19,7 +19,7 @@ logger = logging.getLogger("satmap_dataset.dem_skorowidz")
 
 
 async def _download_tiles(
-    urls: list[str], dest_dir: Path, config: DemConfig, retry_policy: RetryPolicy
+    urls: list[str], dest_dir: Path, config: DemConfig
 ) -> list[Path]:
     dest_dir.mkdir(parents=True, exist_ok=True)
     timeout = httpx.Timeout(timeout=config.timeout, connect=min(config.timeout, 20.0))
@@ -115,7 +115,7 @@ async def _run_async(config: DemConfig) -> tuple[int, Path]:
                     ya.godla = sorted(tiles.keys())
                     if not (native.exists() and not config.overwrite):
                         paths = await _download_tiles(
-                            list(tiles.values()), tmp_dir / f"{product}_{year}", config, retry_policy
+                            list(tiles.values()), tmp_dir / f"{product}_{year}", config
                         )
                         _mosaic_asc_to_native(paths, native, bbox)
                         ya.tile_count = len(paths)

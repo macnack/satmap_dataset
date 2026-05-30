@@ -17,7 +17,7 @@ def _patch(monkeypatch, *, tiles_by_year):
                             status="has_features" if tiles else "zero_features")
         return status, dict(tiles), {}, {}
 
-    async def _fake_download(urls, dest_dir, config, retry_policy):
+    async def _fake_download(urls, dest_dir, config):
         out = []
         for i, _u in enumerate(urls):
             p = Path(dest_dir) / f"t{i}.asc"
@@ -92,3 +92,46 @@ def test_run_fails_when_no_years_available(tmp_path, monkeypatch):
     assert code == 1
     m = DemManifest.model_validate_json(Path(path).read_text())
     assert m.passed is False
+
+
+def test_run_reuses_existing_native_without_download(tmp_path, monkeypatch):
+    _patch(monkeypatch, tiles_by_year={2012: {"g1": "u1"}})
+    calls = {"download": 0, "mosaic": 0}
+
+    async def _spy_download(urls, dest_dir, config):
+        calls["download"] += 1
+        return []
+
+    def _spy_mosaic(tiles, out_path, bbox):
+        calls["mosaic"] += 1
+
+    monkeypatch.setattr(dem_skorowidz, "_download_tiles", _spy_download)
+    monkeypatch.setattr(dem_skorowidz, "_mosaic_asc_to_native", _spy_mosaic)
+
+    cfg = _cfg(tmp_path)
+    native = cfg.dem_root / "skorowidz" / "nmt_kron86" / "native" / "year_2012.tif"
+    native.parent.mkdir(parents=True, exist_ok=True)
+    native.write_bytes(b"PREEXISTING")
+
+    code, path = dem_skorowidz.run(cfg)
+    assert code == 0
+    assert calls["download"] == 0 and calls["mosaic"] == 0
+    m = DemManifest.model_validate_json(Path(path).read_text())
+    y = m.products[0].years[0]
+    assert y.passed is True
+    assert y.godla == ["g1"]  # godla set even on the reuse path
+
+
+def test_run_capabilities_failure_isolates_product(tmp_path, monkeypatch):
+    _patch(monkeypatch, tiles_by_year={2012: {"g1": "u1"}})
+
+    async def _boom(product, datum, options=None, *, timeout=45.0, retry_policy=None):
+        raise RuntimeError("capabilities down")
+
+    monkeypatch.setattr(dem_skorowidz.dem_skorowidz_client, "year_typenames", _boom)
+
+    code, path = dem_skorowidz.run(_cfg(tmp_path))
+    assert code == 1  # no years produced
+    m = DemManifest.model_validate_json(Path(path).read_text())
+    assert m.products[0].years == []
+    assert m.products[0].passed is False
