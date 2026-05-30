@@ -181,6 +181,30 @@ class DemManifest(BaseModel):
     run_parameters: dict[str, Any] = Field(default_factory=dict)
 
 
+class DemAvailabilityEntry(BaseModel):
+    product: Literal["nmt", "nmpt"]
+    datum: Literal["evrf2007", "kron86"]
+    year: int = Field(..., ge=1900)
+    godla: list[str] = Field(default_factory=list)
+    tile_count: int = Field(default=0, ge=0)
+    formats: list[str] = Field(default_factory=list)
+    coverage: Literal["full", "partial", "none"] = "none"
+    coverage_pct: float = 0.0
+    acquisition_dates: list[str] = Field(default_factory=list)
+
+
+class DemAvailabilityReport(BaseModel):
+    kind: Literal["dem_availability"] = "dem_availability"
+    generated_at: datetime = Field(default_factory=_utc_now)
+    provider: str = "geoportal"
+    aoi_bbox: str
+    srs: str
+    entries: list[DemAvailabilityEntry] = Field(default_factory=list)
+    errors: dict[str, str] = Field(default_factory=dict)
+    full_coverage_options: list[dict[str, Any]] = Field(default_factory=list)
+    run_parameters: dict[str, Any] = Field(default_factory=dict)
+
+
 class OsmCategoryAsset(BaseModel):
     feature_count: int = Field(default=0, ge=0)
     raster_path: str | None = None
