@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from satmap_dataset.config import DownloadConfig, IndexConfig
-from satmap_dataset.pipeline import downloader, index_builder
+from satmap_dataset.config import DemConfig, DownloadConfig, IndexConfig
+from satmap_dataset.pipeline import dem, downloader, index_builder
 from satmap_dataset.providers.base import Provider
 
 
@@ -16,3 +16,6 @@ class GeoportalProvider(Provider):
 
     def download(self, config: DownloadConfig) -> tuple[int, Path]:
         return downloader.run(config)
+
+    def dem(self, config: DemConfig) -> tuple[int, Path]:
+        return dem.run(config)

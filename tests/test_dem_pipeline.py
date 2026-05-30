@@ -169,3 +169,19 @@ def test_run_partial_failure_marks_not_passed(tmp_path, monkeypatch):
     by_product = {p.product: p for p in manifest.products}
     assert by_product["nmt"].passed is True
     assert by_product["nmpt"].passed is False
+
+
+def test_geoportal_provider_dem_delegates(tmp_path, monkeypatch):
+    from satmap_dataset.providers.geoportal import GeoportalProvider
+
+    called = {}
+
+    def _fake_run(config):
+        called["config"] = config
+        return (0, tmp_path / "dem_manifest.json")
+
+    monkeypatch.setattr("satmap_dataset.pipeline.dem.run", _fake_run)
+    cfg = DemConfig(bbox="0,0,10,10", dem_root=tmp_path / "dem_x")
+    code, path = GeoportalProvider().dem(cfg)
+    assert code == 0
+    assert called["config"] is cfg
