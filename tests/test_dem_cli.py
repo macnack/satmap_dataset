@@ -1,7 +1,12 @@
 import json
+import sys
 from pathlib import Path
 
 from typer.testing import CliRunner
+
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from satmap_dataset.cli import (
     app,
