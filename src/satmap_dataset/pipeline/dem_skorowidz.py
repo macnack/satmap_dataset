@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shutil
 import subprocess
 import tempfile
+import zipfile
 from pathlib import Path
 
 import httpx
@@ -16,6 +18,60 @@ from satmap_dataset.pipeline import dem
 from satmap_dataset.providers.lantmateriet.provider import _download_asset_with_retry
 
 logger = logging.getLogger("satmap_dataset.dem_skorowidz")
+
+_RASTER_EXTS = (".asc", ".tif", ".tiff", ".xyz")
+
+
+def _godlo_of(url: str) -> str:
+    """Derive the map-sheet godło from a tile download URL, stripping format extensions."""
+    stem = Path(url).name
+    if stem.lower().endswith(".zip"):
+        stem = stem[:-4]
+    for ext in (".xyz", ".asc", ".tiff", ".tif"):
+        if stem.lower().endswith(ext):
+            stem = stem[: -len(ext)]
+            break
+    parts = stem.split("_")
+    return "_".join(parts[2:]) if len(parts) >= 3 else stem
+
+
+def _is_xyz(url: str) -> bool:
+    return ".xyz" in Path(url).name.lower()
+
+
+def _select_grid_urls(tiles: dict[str, str]) -> list[str]:
+    """One download URL per godło, preferring a raster grid over an .xyz point cloud.
+
+    Returns the selected URL basenames (filenames), not full URLs, so callers can
+    reconstruct full URLs or use them directly as identifiers.
+    """
+    best: dict[str, tuple[int, str]] = {}
+    for url in tiles.values():
+        godlo = _godlo_of(url)
+        prio = 1 if _is_xyz(url) else 0  # prefer non-xyz
+        current = best.get(godlo)
+        if current is None or prio < current[0]:
+            best[godlo] = (prio, url)
+    return [Path(url).name for _prio, url in best.values()]
+
+
+def _extract_if_zip(path: Path, dest_dir: Path) -> list[Path]:
+    """If path is a .zip, extract the raster grid(s) inside; otherwise return [path]."""
+    if path.suffix.lower() != ".zip":
+        return [path]
+    extracted: list[Path] = []
+    with zipfile.ZipFile(path) as zf:
+        for member in zf.namelist():
+            if member.endswith("/"):
+                continue
+            if member.lower().endswith(_RASTER_EXTS):
+                target = dest_dir / Path(member).name
+                with zf.open(member) as src, open(target, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                extracted.append(target)
+    if not extracted:
+        raise RuntimeError(f"no raster grid (.asc/.tif/.xyz) found inside {path.name}")
+    return extracted
 
 
 async def _download_tiles(
@@ -35,7 +91,7 @@ async def _download_tiles(
             )
             if not ok:
                 raise RuntimeError(f"download failed: {url}")
-            paths.append(out)
+            paths.extend(_extract_if_zip(out, dest_dir))
     return paths
 
 
@@ -114,8 +170,13 @@ async def _run_async(config: DemConfig) -> tuple[int, Path]:
                         continue
                     ya.godla = sorted(tiles.keys())
                     if not (native.exists() and not config.overwrite):
+                        selected_names = set(_select_grid_urls(tiles))
+                        selected_urls = [
+                            url for url in tiles.values()
+                            if Path(url).name in selected_names
+                        ]
                         paths = await _download_tiles(
-                            list(tiles.values()), tmp_dir / f"{product}_{year}", config
+                            selected_urls, tmp_dir / f"{product}_{year}", config
                         )
                         _mosaic_asc_to_native(paths, native, bbox)
                         ya.tile_count = len(paths)

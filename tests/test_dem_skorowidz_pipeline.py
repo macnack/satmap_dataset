@@ -1,3 +1,6 @@
+import zipfile
+
+import pytest
 from pathlib import Path
 
 from satmap_dataset.config import DemConfig
@@ -135,3 +138,45 @@ def test_run_capabilities_failure_isolates_product(tmp_path, monkeypatch):
     m = DemManifest.model_validate_json(Path(path).read_text())
     assert m.products[0].years == []
     assert m.products[0].passed is False
+
+
+def test_select_grid_urls_prefers_nonxyz_and_keeps_only_xyz():
+    tiles = {
+        "a": "https://x/70_85_M-34-27-C-c-4-4.asc",
+        "a_xyz": "https://x/70_85_M-34-27-C-c-4-4.xyz",
+        "b_xyz": "https://x/70_85_M-34-27-C-d-3-3.xyz",          # only xyz -> kept
+        "c_zip": "https://x/72_88_M-34-27-C-e-1-1.zip",          # non-xyz zip
+    }
+    sel = dem_skorowidz._select_grid_urls(tiles)
+    assert len(sel) == 3  # three distinct godla
+    # for godlo c-4-4: .asc chosen, .xyz dropped
+    assert "70_85_M-34-27-C-c-4-4.asc" in sel
+    assert "70_85_M-34-27-C-c-4-4.xyz" not in sel
+    # godlo d-3-3 has only xyz -> kept
+    assert "70_85_M-34-27-C-d-3-3.xyz" in sel
+    # zip kept
+    assert "72_88_M-34-27-C-e-1-1.zip" in sel
+
+
+def test_extract_if_zip_returns_inner_raster(tmp_path):
+    z = tmp_path / "72_88_M-34-27-C-d-3-3.zip"
+    with zipfile.ZipFile(z, "w") as zf:
+        zf.writestr("M-34-27-C-d-3-3.asc", "ncols 2\nnrows 2\n0 0 0 0\n")
+        zf.writestr("readme.txt", "ignore me")
+    out = dem_skorowidz._extract_if_zip(z, tmp_path)
+    assert len(out) == 1 and out[0].name.endswith(".asc")
+    assert out[0].exists()
+
+
+def test_extract_if_zip_passthrough_nonzip(tmp_path):
+    a = tmp_path / "x.asc"
+    a.write_text("x")
+    assert dem_skorowidz._extract_if_zip(a, tmp_path) == [a]
+
+
+def test_extract_if_zip_no_raster_raises(tmp_path):
+    z = tmp_path / "bad.zip"
+    with zipfile.ZipFile(z, "w") as zf:
+        zf.writestr("notes.txt", "nothing")
+    with pytest.raises(RuntimeError):
+        dem_skorowidz._extract_if_zip(z, tmp_path)
