@@ -9,6 +9,7 @@ import tifffile
 
 from satmap_dataset.config import ValidateConfig
 from satmap_dataset.models import DatasetManifest, ValidationReport
+from satmap_dataset.pipeline.render import _KNOWN_PROJ_WKT
 
 logger = logging.getLogger("satmap_dataset.validate")
 
@@ -226,11 +227,14 @@ def _validate_sidecars(asset_path: Path, target_srs: str) -> list[str]:
     epsg = _epsg_code(target_srs)
     if epsg is None:
         return errors
-    # Render writes a .prj sidecar for any EPSG it knows the WKT for; check the
-    # AUTHORITY tag matches the target_srs declared in the manifest. Skip if no
-    # .prj exists — render does that intentionally for unknown CRSes, and we
-    # don't want to fail validation just because the WKT lookup is incomplete.
+    # Render writes a .prj sidecar for every EPSG it knows the WKT for; check the
+    # AUTHORITY tag matches the target_srs declared in the manifest. For a known
+    # EPSG a missing .prj is a real defect (render always writes one), so flag
+    # it. For CRSes render has no WKT for, render intentionally skips the .prj —
+    # don't fail validation just because the WKT lookup is incomplete.
     if not prj.exists():
+        if epsg in _KNOWN_PROJ_WKT:
+            errors.append(f"Missing projection file for {asset_path.name}: {prj.name}")
         return errors
     prj_text = prj.read_text(encoding="ascii", errors="ignore")
     if f'EPSG","{epsg}"' not in prj_text:

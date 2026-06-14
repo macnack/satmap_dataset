@@ -1,0 +1,15 @@
+{
+  "dataset_manifest": "artifacts_sivl_area1_full/dataset_manifest_download.json",
+  "render_root": "rendered_sivl_area1_full",
+  "mode": "wfs_render",
+  "profile": "train",
+  "px_per_meter": 2.0,
+  "auto_size_from_bbox": true,
+  "target_bbox": "349689,6671480,354489,6674467",
+  "target_srs": "EPSG:3067",
+  "resample_method": "bilinear",
+  "tile_size": 512,
+  "compression": "deflate",
+  "wms_fallback_missing_years": false,
+  "output_json": "artifacts_sivl_area1_full/dataset_manifest_render.json"
+}

@@ -307,3 +307,185 @@ def test_download_marks_failed_on_http_error(monkeypatch, tmp_path):
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert data["passed"] is False
     assert data["years_included"] == []
+
+
+def test_download_leaves_no_partial_file_on_midstream_failure(monkeypatch, tmp_path):
+    """A network drop mid-stream must not leave a truncated .tif (or .part) behind.
+
+    The reuse check treats any non-empty file as a finished asset, so a partial
+    download would silently poison the next run. _download_one streams into a
+    .part file and only renames on success; failure paths clean it up.
+    """
+    index_path = _write_index_manifest(tmp_path, [2018])
+    cfg = DownloadConfig(
+        index_manifest=index_path,
+        download_root=tmp_path / "downloads",
+        provider="nls",
+        provider_options={"api_key": "test-key"},
+        bbox="385000,6675000,387000,6677000",
+        srs="EPSG:3067",
+        retries=0,
+        output_json=tmp_path / "dataset_manifest_download.json",
+    )
+
+    class _FailingStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b"PARTIAL_TIFF_BYTES"
+            raise httpx.ReadError("connection reset mid-stream")
+
+        async def aclose(self) -> None:
+            return None
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, stream=_FailingStream())
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        "satmap_dataset.providers.nls.provider._make_async_client",
+        lambda **kw: httpx.AsyncClient(transport=transport, **kw),
+    )
+
+    exit_code, manifest_path = NlsProvider().download(cfg)
+    assert exit_code != 0
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert data["passed"] is False
+    assert data["years_included"] == []
+
+    out = cfg.download_root / "2018" / "nls_2018.tif"
+    assert not out.exists()
+    assert not out.with_name(out.name + ".part").exists()
+
+
+def _write_multicell_index_manifest(tmp_path: Path, year: int, n_cells: int) -> Path:
+    """Index manifest with a single year split into `n_cells` grid cells."""
+    tile_ids = [f"nls_{year}_{c}_0" for c in range(n_cells)]
+    manifest = IndexManifest(
+        provider="nls",
+        year_start=year,
+        year_end=year,
+        bbox="385000,6675000,389000,6677000",
+        srs="EPSG:3067",
+        years_requested=[year],
+        year_statuses=[
+            YearStatus(year=year, typename_exists=True, feature_count=1, status="has_features")
+        ],
+        years_available_wfs=[year],
+        years_included=[year],
+        common_tile_ids=[f"cell_{c}_0" for c in range(n_cells)],
+        tile_sources_by_year={
+            year: {tid: f"https://example.test/wcs?tile={tid}" for tid in tile_ids}
+        },
+        tile_bboxes_by_year={year: {tid: [0, 0, 1, 1] for tid in tile_ids}},
+        passed=True,
+    )
+    path = tmp_path / "index_manifest.json"
+    path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+    return path
+
+
+def _empty_and_full_bytes(tmp_path: Path):
+    import numpy as np
+    import tifffile
+
+    empty = tmp_path / "empty.tif"
+    full = tmp_path / "full.tif"
+    tifffile.imwrite(empty, np.zeros((64, 64, 3), dtype=np.uint8), photometric="rgb")
+    tifffile.imwrite(full, np.full((64, 64, 3), 128, dtype=np.uint8), photometric="rgb")
+    return empty.read_bytes(), full.read_bytes()
+
+
+def _patch_client(monkeypatch, handler) -> None:
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        "satmap_dataset.providers.nls.provider._make_async_client",
+        lambda **kw: httpx.AsyncClient(transport=transport, **kw),
+    )
+
+
+def test_download_keeps_partial_year_and_records_gap(monkeypatch, tmp_path):
+    """A year with one empty cell stays included but the gap is recorded."""
+    index_path = _write_multicell_index_manifest(tmp_path, 2018, 2)
+    cfg = DownloadConfig(
+        index_manifest=index_path,
+        download_root=tmp_path / "downloads",
+        provider="nls",
+        provider_options={"api_key": "test-key"},
+        bbox="385000,6675000,389000,6677000",
+        srs="EPSG:3067",
+        output_json=tmp_path / "dataset_manifest_download.json",
+    )
+    empty_bytes, full_bytes = _empty_and_full_bytes(tmp_path)
+
+    def handler(request):
+        body = empty_bytes if "nls_2018_1_0" in str(request.url) else full_bytes
+        return httpx.Response(200, content=body)
+
+    _patch_client(monkeypatch, handler)
+    exit_code, manifest_path = NlsProvider().download(cfg)
+    assert exit_code == 0
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert data["years_included"] == [2018]
+    assert data["passed"] is True
+    partials = data["provider_metadata"]["partial_coverage_by_year"]["2018"]
+    assert partials == ["nls_2018_1_0:wcs_returned_empty_tile"]
+    # The surviving cell stays on disk; the empty one is removed.
+    assert (cfg.download_root / "2018" / "nls_2018_0_0.tif").is_file()
+    assert not (cfg.download_root / "2018" / "nls_2018_1_0.tif").exists()
+
+
+def test_download_require_full_grid_coverage_excludes_partial_year(monkeypatch, tmp_path):
+    """With require_full_grid_coverage, a year missing any cell is excluded."""
+    index_path = _write_multicell_index_manifest(tmp_path, 2018, 2)
+    cfg = DownloadConfig(
+        index_manifest=index_path,
+        download_root=tmp_path / "downloads",
+        provider="nls",
+        provider_options={"api_key": "test-key", "require_full_grid_coverage": True},
+        bbox="385000,6675000,389000,6677000",
+        srs="EPSG:3067",
+        output_json=tmp_path / "dataset_manifest_download.json",
+    )
+    empty_bytes, full_bytes = _empty_and_full_bytes(tmp_path)
+
+    def handler(request):
+        body = empty_bytes if "nls_2018_1_0" in str(request.url) else full_bytes
+        return httpx.Response(200, content=body)
+
+    _patch_client(monkeypatch, handler)
+    exit_code, manifest_path = NlsProvider().download(cfg)
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert data["years_included"] == []
+    assert data["years_excluded_with_reason"]["2018"] == "incomplete_grid_coverage"
+    assert exit_code != 0  # no years left -> policy fails
+
+
+def test_download_partial_cell_transport_failure_does_not_fail_run(monkeypatch, tmp_path):
+    """A single failed cell in an otherwise-covered year must not fail the run."""
+    index_path = _write_multicell_index_manifest(tmp_path, 2018, 2)
+    cfg = DownloadConfig(
+        index_manifest=index_path,
+        download_root=tmp_path / "downloads",
+        provider="nls",
+        provider_options={"api_key": "test-key"},
+        bbox="385000,6675000,389000,6677000",
+        srs="EPSG:3067",
+        retries=0,
+        output_json=tmp_path / "dataset_manifest_download.json",
+    )
+    _, full_bytes = _empty_and_full_bytes(tmp_path)
+
+    def handler(request):
+        if "nls_2018_1_0" in str(request.url):
+            return httpx.Response(404, content=b"not found")
+        return httpx.Response(200, content=full_bytes)
+
+    _patch_client(monkeypatch, handler)
+    exit_code, manifest_path = NlsProvider().download(cfg)
+    assert exit_code == 0
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert data["years_included"] == [2018]
+    assert data["passed"] is True
+    assert data["provider_metadata"]["hard_failed_years"] == []
+    assert data["provider_metadata"]["partial_coverage_by_year"]["2018"] == [
+        "nls_2018_1_0:wcs_download_failed"
+    ]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,10 @@ from satmap_dataset.providers.nls.wcs import (
 logger = logging.getLogger("satmap_dataset.nls")
 
 WCS_AOI_CAP_METERS = 2000.0
+# Safety bound so a mis-specified AOI can't fan out into thousands of WCS
+# GetCoverage requests. 64 cells covers an 8x8 grid of 2 km cells (~16 km
+# square), far beyond any SIVL area.
+MAX_WCS_GRID_CELLS = 64
 
 
 def _option(options: dict[str, Any], key: str, default: Any) -> Any:
@@ -48,16 +53,38 @@ def _parse_bbox(bbox: str) -> tuple[float, float, float, float]:
     return (xmin, ymin, xmax, ymax)
 
 
-def _check_aoi_cap(bbox: tuple[float, float, float, float]) -> str | None:
+def _split_bbox_into_grid(
+    bbox: tuple[float, float, float, float],
+    *,
+    cap: float = WCS_AOI_CAP_METERS,
+) -> list[tuple[int, int, tuple[float, float, float, float]]]:
+    """Split an AOI bbox into an even grid of cells, each <= ``cap`` on both sides.
+
+    The NLS WCS rejects GetCoverage requests whose subset exceeds ``cap`` metres
+    on either side, so AOIs larger than that must be fetched as several cells and
+    mosaicked at render. Returns ``(col, row, cell_bbox)`` tuples with zero-based
+    ``col``/``row`` (``row`` counted from the south edge upward). A bbox already
+    within the cap yields a single ``(0, 0, bbox)`` cell, preserving the original
+    single-tile behaviour for small AOIs.
+    """
     xmin, ymin, xmax, ymax = bbox
     width = xmax - xmin
     height = ymax - ymin
-    if width > WCS_AOI_CAP_METERS or height > WCS_AOI_CAP_METERS:
-        return (
-            f"bbox {width:.0f}m x {height:.0f}m exceeds NLS WCS cap of "
-            f"{WCS_AOI_CAP_METERS:.0f}m on either side"
-        )
-    return None
+    ncols = max(1, math.ceil(width / cap))
+    nrows = max(1, math.ceil(height / cap))
+    cell_w = width / ncols
+    cell_h = height / nrows
+    cells: list[tuple[int, int, tuple[float, float, float, float]]] = []
+    for row in range(nrows):
+        for col in range(ncols):
+            cx0 = xmin + col * cell_w
+            cy0 = ymin + row * cell_h
+            # Pin the far edges to the AOI bounds so float drift can't leave
+            # slivers between adjacent cells or overshoot the requested AOI.
+            cx1 = xmax if col == ncols - 1 else cx0 + cell_w
+            cy1 = ymax if row == nrows - 1 else cy0 + cell_h
+            cells.append((col, row, (cx0, cy0, cx1, cy1)))
+    return cells
 
 
 def _with_api_key(url: str, api_key: str) -> str:
@@ -218,27 +245,42 @@ async def _download_one(
 ) -> bool:
     attempts = max(1, retries + 1)
     request_url = _with_api_key(url, api_key) if api_key else url
-    for attempt in range(1, attempts + 1):
-        try:
-            async with client.stream("GET", request_url) as response:
-                response.raise_for_status()
-                async with aiofiles.open(output_path, "wb") as fp:
-                    async for chunk in response.aiter_bytes():
-                        await fp.write(chunk)
-            return True
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code in (400, 401, 403, 404):
-                logger.error("NLS download terminal status=%s url=%s", exc.response.status_code, url)
-                return False
-            if attempt >= attempts:
-                return False
-            await asyncio.sleep(0.5 * attempt)
-        except httpx.HTTPError as exc:
-            if attempt >= attempts:
-                logger.error("NLS download exhausted retries url=%s err=%s", url, exc)
-                return False
-            await asyncio.sleep(0.5 * attempt)
-    return False
+    # Stream into a sibling .part file and only rename into place on success.
+    # A network error mid-stream must never leave a truncated .tif behind: the
+    # download reuse check treats any non-empty file as a finished asset, so a
+    # partial file would silently poison the next run.
+    part_path = output_path.with_name(output_path.name + ".part")
+    try:
+        for attempt in range(1, attempts + 1):
+            try:
+                async with client.stream("GET", request_url) as response:
+                    response.raise_for_status()
+                    async with aiofiles.open(part_path, "wb") as fp:
+                        async for chunk in response.aiter_bytes():
+                            await fp.write(chunk)
+                part_path.replace(output_path)
+                return True
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in (400, 401, 403, 404):
+                    logger.error("NLS download terminal status=%s url=%s", exc.response.status_code, url)
+                    return False
+                if attempt >= attempts:
+                    return False
+                await asyncio.sleep(0.5 * attempt)
+            except httpx.HTTPError as exc:
+                if attempt >= attempts:
+                    logger.error("NLS download exhausted retries url=%s err=%s", url, exc)
+                    return False
+                await asyncio.sleep(0.5 * attempt)
+        return False
+    finally:
+        # Any failure path leaves a stale partial — drop it so the reuse check
+        # can't mistake it for a cache hit on the next run.
+        if part_path.exists():
+            try:
+                part_path.unlink()
+            except OSError:
+                pass
 
 
 def _write_failed_manifest(config: IndexConfig, error: str) -> None:
@@ -269,8 +311,12 @@ class NlsProvider:
 
     def index(self, config: IndexConfig) -> tuple[int, Path]:
         bbox = _parse_bbox(config.bbox)
-        cap_error = _check_aoi_cap(bbox)
-        if cap_error is not None:
+        grid_cells = _split_bbox_into_grid(bbox)
+        if len(grid_cells) > MAX_WCS_GRID_CELLS:
+            cap_error = (
+                f"AOI splits into {len(grid_cells)} WCS cells (> {MAX_WCS_GRID_CELLS}); "
+                "AOI is too large to tile safely"
+            )
             logger.error("NLS index: %s", cap_error)
             _write_failed_manifest(config, cap_error)
             return 2, config.output_json
@@ -348,17 +394,29 @@ class NlsProvider:
             for y in requested_years
         ]
 
+        single_cell = len(grid_cells) == 1
+
+        def _tile_id(year: int, col: int, row: int) -> str:
+            # Keep the original id for un-tiled (<= cap) AOIs; suffix with the
+            # grid position when the AOI is split so render can place each cell.
+            return f"nls_{year}" if single_cell else f"nls_{year}_{col}_{row}"
+
         tile_sources_by_year: dict[int, dict[str, str]] = {}
         tile_bboxes_by_year: dict[int, dict[str, list[float]]] = {}
         for year in years_included:
-            url = build_get_coverage_url(
-                base_url,
-                coverage_id=coverage_id,
-                bbox=bbox,
-                year=year,
-            )
-            tile_sources_by_year[year] = {f"nls_{year}": url}
-            tile_bboxes_by_year[year] = {f"nls_{year}": list(bbox)}
+            sources: dict[str, str] = {}
+            bboxes: dict[str, list[float]] = {}
+            for col, row, cell_bbox in grid_cells:
+                tile_id = _tile_id(year, col, row)
+                sources[tile_id] = build_get_coverage_url(
+                    base_url,
+                    coverage_id=coverage_id,
+                    bbox=cell_bbox,
+                    year=year,
+                )
+                bboxes[tile_id] = list(cell_bbox)
+            tile_sources_by_year[year] = sources
+            tile_bboxes_by_year[year] = bboxes
 
         policy = evaluate_year_policy(
             requested_years=requested_years,
@@ -397,7 +455,11 @@ class NlsProvider:
             years_available_wfs=available_years,
             years_included=years_included,
             years_excluded_with_reason=years_excluded,
-            common_tile_ids=[f"nls_{y}" for y in years_included],
+            # common_tile_ids here means the year-independent grid cells shared
+            # by every year (NLS reuses the same AOI grid each year), NOT the
+            # per-year tile_sources keys (which embed the year). For a single
+            # un-tiled AOI this is the lone "cell_0_0".
+            common_tile_ids=[f"cell_{col}_{row}" for col, row, _ in grid_cells],
             tile_sources_by_year=tile_sources_by_year,
             tile_bboxes_by_year=tile_bboxes_by_year,
             passed=policy.passed and bool(years_included),
@@ -461,9 +523,16 @@ class NlsProvider:
         dropped: dict[int, str] = {}
         years_source_map: dict[int, str] = {}
         years_included_effective: list[int] = []
+        # Per-year record of cells that failed/were dropped even when the year
+        # itself survived — without this a holey mosaic looks fully covered.
+        partial_coverage_by_year: dict[int, list[str]] = {}
         min_coverage = float(
             options.get("min_coverage_ratio", DEFAULT_MIN_COVERAGE_RATIO)
         )
+        # When True, a year is only kept if *every* grid cell produced usable
+        # pixels. Off by default (a partial year is still better than none for
+        # most uses); turn on for datasets that require gap-free coverage.
+        require_full = bool(options.get("require_full_grid_coverage", False))
 
         async with _make_async_client(
             timeout=timeout, limits=limits, headers=headers, follow_redirects=True
@@ -473,32 +542,72 @@ class NlsProvider:
                 if not sources:
                     failed.append(f"year_{year}_no_source")
                     continue
-                tile_id, url = next(iter(sources.items()))
-                output_path = config.download_root / str(year) / f"{tile_id}.tif"
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                ok = output_path.exists() and output_path.stat().st_size > 0 and not config.overwrite
-                if not ok:
-                    ok = await _download_one(
-                        client, url, output_path, retries=config.retries, api_key=api_key
+                year_assets: list[str] = []
+                tile_drop_reasons: list[str] = []
+                cell_drops: list[str] = []  # "tile_id:reason" for traceability
+                for tile_id, url in sources.items():
+                    output_path = config.download_root / str(year) / f"{tile_id}.tif"
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    ok = (
+                        output_path.exists()
+                        and output_path.stat().st_size > 0
+                        and not config.overwrite
                     )
-                if not ok:
-                    failed.append(url)
-                    dropped[year] = "wcs_download_failed"
-                    continue
-                drop_reason = _classify_tile(output_path, min_coverage_ratio=min_coverage)
-                if drop_reason is not None:
-                    logger.info("NLS download: year=%s dropping (%s)", year, drop_reason)
+                    if not ok:
+                        ok = await _download_one(
+                            client, url, output_path, retries=config.retries, api_key=api_key
+                        )
+                    if not ok:
+                        failed.append(url)
+                        tile_drop_reasons.append("wcs_download_failed")
+                        cell_drops.append(f"{tile_id}:wcs_download_failed")
+                        continue
+                    drop_reason = _classify_tile(output_path, min_coverage_ratio=min_coverage)
+                    if drop_reason is not None:
+                        logger.info(
+                            "NLS download: year=%s tile=%s dropping (%s)",
+                            year,
+                            tile_id,
+                            drop_reason,
+                        )
+                        try:
+                            output_path.unlink()
+                        except OSError:
+                            pass
+                        tile_drop_reasons.append(drop_reason)
+                        cell_drops.append(f"{tile_id}:{drop_reason}")
+                        continue
+                    year_assets.append(str(output_path))
+                # A year is fully covered only when every cell produced pixels.
+                # With require_full off we still keep partially-covered years
+                # (render mosaics whatever survived) but record the gaps so a
+                # holey mosaic never looks complete in the manifest.
+                fully_covered = bool(year_assets) and not cell_drops
+                keep_year = bool(year_assets) and (fully_covered or not require_full)
+                if cell_drops:
+                    partial_coverage_by_year[year] = cell_drops
+                if keep_year:
+                    assets.extend(year_assets)
+                    years_source_map[year] = "wcs"
+                    years_included_effective.append(year)
+                else:
+                    # Surface the dominant reason: a hard transport failure is
+                    # more actionable than an empty-tile drop, so prefer it.
+                    if not year_assets and "wcs_download_failed" in tile_drop_reasons:
+                        dropped[year] = "wcs_download_failed"
+                    elif not year_assets and tile_drop_reasons:
+                        dropped[year] = tile_drop_reasons[0]
+                    elif not year_assets:
+                        dropped[year] = "wcs_returned_empty_tile"
+                    else:
+                        # Some cells succeeded but require_full rejected the year.
+                        dropped[year] = "incomplete_grid_coverage"
+                    # Drop the year directory only if nothing usable remains on
+                    # disk; partial cells are left cached to avoid re-downloading.
                     try:
-                        output_path.unlink()
-                        # Remove the now-empty year directory; ignore if not empty.
-                        output_path.parent.rmdir()
+                        (config.download_root / str(year)).rmdir()
                     except OSError:
                         pass
-                    dropped[year] = drop_reason
-                    continue
-                assets.append(str(output_path))
-                years_source_map[year] = "wcs"
-                years_included_effective.append(year)
 
         years_excluded = dict(index_manifest.years_excluded_with_reason)
         for year, reason in dropped.items():
@@ -514,6 +623,14 @@ class NlsProvider:
             available_years=sorted_included,
             strict_years=index_manifest.strict_years,
             min_years=index_manifest.min_years,
+        )
+        # A year that lost *every* cell to a transport error (not to a legit
+        # "no coverage here" empty tile) is a hard failure: the year was
+        # expected and the download broke. A year that kept some cells but lost
+        # others to transport errors is recorded in partial_coverage_by_year
+        # and does NOT fail the run.
+        hard_failed_years = sorted(
+            y for y, reason in dropped.items() if reason == "wcs_download_failed"
         )
 
         manifest = DatasetManifest(
@@ -535,17 +652,26 @@ class NlsProvider:
             px_per_meter=config.px_per_meter,
             years_source_map=years_source_map,
             forced_wms_years=[],
+            # Pass/fail follows the year-coverage policy plus hard transport
+            # failures, not the raw cell-failure count: a single failed cell in
+            # an otherwise-covered grid must not fail the whole run (the gap is
+            # recorded in partial_coverage_by_year instead), but a year that
+            # lost every cell to a transport error does fail it.
             passed=(
-                bool(assets) and not failed and download_policy.passed
+                bool(assets) and download_policy.passed and not hard_failed_years
             ),
             notes=(
-                f"provider=nls downloaded={len(assets)} failed={len(failed)} "
-                f"dropped={len(dropped)}"
+                f"provider=nls downloaded={len(assets)} failed_cells={len(failed)} "
+                f"dropped_years={len(dropped)} hard_failed_years={len(hard_failed_years)} "
+                f"partial_years={len(partial_coverage_by_year)}"
             ),
             run_parameters=config.model_dump(mode="json"),
             provider_metadata={
                 "failed_urls": failed,
                 "dropped_years": dropped,
+                "hard_failed_years": hard_failed_years,
+                "partial_coverage_by_year": partial_coverage_by_year,
+                "require_full_grid_coverage": require_full,
                 "min_coverage_ratio": min_coverage,
                 "post_download_policy_errors": list(download_policy.errors),
                 "post_download_policy_warnings": list(download_policy.warnings),
