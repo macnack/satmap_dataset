@@ -184,8 +184,11 @@ WCS endpoint. License: CC BY 4.0. Requires a free API key from
 https://omatili.maanmittauslaitos.fi/ — paste it into a `.secret` file at the
 repo root, set `SATMAP_NLS_API_KEY`, or pass it via `provider_options.api_key`.
 
-Hard limit: AOIs must be ≤ 2000 m × 2000 m in EPSG:3067 (matches the project's
-default `square_km=4.0`). Larger AOIs are rejected at config time.
+The NLS WCS rejects GetCoverage requests larger than 2000 m on either side, so
+AOIs above that cap are split into an even grid of ≤ 2 km cells (one GetCoverage
+URL per year + cell) and mosaicked back together at render via each tile's
+embedded georef. A sub-cap AOI still produces a single tile. Only AOIs that
+would fan out past `MAX_WCS_GRID_CELLS` (64) cells are rejected at index time.
 
 ```bash
 # Index + download in one shot
@@ -196,8 +199,205 @@ python -m satmap_dataset.cli nls-index-json configs/run/base_nls.json
 python -m satmap_dataset.cli nls-download-json configs/run/base_nls.json
 ```
 
-The downloaded GeoTIFFs land under `<download_root>/<year>/nls_<year>.tif` and
-are consumed by the existing `render` and `validate` stages unchanged.
+The downloaded GeoTIFFs land under `<download_root>/<year>/nls_<year>.tif` (or
+`nls_<year>_<col>_<row>.tif` per cell for tiled AOIs) and are consumed by the
+existing `render` and `validate` stages unchanged. Set
+`provider_options.require_full_grid_coverage: true` to exclude any year whose
+grid is not fully covered, instead of keeping a partial mosaic.
+
+## Sweden / Lantmäteriet provider
+
+The pipeline supports two providers, selected via `--provider` (CLI) or the
+`provider` field in JSON configs:
+
+- `geoportal` (default) — Polish PZGiK WFS + WMS.
+- `lantmateriet` — Swedish Lantmäteriet STAC API for annual orthophotos
+  (Ortofoto Visning Årsvisa, 2006 onwards), with optional WMS fallback.
+
+The two providers share the same downstream stages, so `index → download → render → validate`
+and the `run`/`run-json`/`run-location-json` commands work identically — only
+the data source changes. EPSG defaults differ: Geoportal uses `EPSG:2180` and
+Lantmäteriet uses `EPSG:3006` (SWEREF 99 TM).
+
+> *Ortofoto Nedladdning* (the STAC product) is the **primary** source. As of
+> 2026 its license fee is **0 SEK**, but you still need a free Geotorget
+> account and an active subscription before `dl1.lantmateriet.se` will return
+> assets to your Basic-Auth requests. *Ortofoto Visning, Årsvisa* (the annual
+> WMS view service) is a **paid** product (~1.66 MSEK/year as of 2026); we
+> only allow it as an opt-in fallback (`wms_fallback_missing_years: true` plus
+> an explicit `provider_options.wms_url` and `provider_options.wms_layer`) and
+> it is **off by default**. Preserve the `© Lantmäteriet` attribution that the
+> STAC item metadata carries.
+
+### Configure the provider
+
+Per-call options live in `provider_options` on the run/index/download config:
+
+| Key                  | Purpose                                                |
+| -------------------- | ------------------------------------------------------ |
+| `stac_url`           | STAC `/search` endpoint                                |
+| `stac_collection`    | Collection ID (string or list)                         |
+| `wms_url`            | Annual WMS GetMap endpoint                             |
+| `wms_layer`          | WMS layer name                                         |
+| `wms_version`        | WMS version (default `1.3.0`)                          |
+| `year_policy`        | `exact_only`, `nearest_before`, `nearest_after`, or `nearest_any_with_max_delta` |
+| `max_year_delta`     | Required when `year_policy = nearest_any_with_max_delta` |
+| `api_key`            | Bearer token for STAC / WMS                            |
+
+Each `provider_options` key has an environment-variable fallback:
+`SATMAP_LANTMATERIET_STAC_URL`, `SATMAP_LANTMATERIET_STAC_COLLECTION`,
+`SATMAP_LANTMATERIET_WMS_URL`, `SATMAP_LANTMATERIET_WMS_LAYER`,
+`SATMAP_LANTMATERIET_API_KEY`, `SATMAP_LANTMATERIET_USERNAME`,
+`SATMAP_LANTMATERIET_PASSWORD`.
+
+`dl1.lantmateriet.se` requires Geotorget API credentials (a `lm_…`-style
+username plus generated password issued per subscribed product, distinct from
+your `lantmateriet.se` website login). 401 means missing/invalid credentials;
+403 means the subscription is not yet active for the requested asset. The
+downloader treats 4xx as non-retryable — no point burning the tile budget on a
+permission error.
+
+### Generate a 2 km bbox around Kisa
+
+```bash
+python scripts/make_bbox.py \
+  --center-lat 57.985 \
+  --center-lon 15.629 \
+  --size-meters 2000 \
+  --target-srs EPSG:3006
+```
+
+The script prints the bbox in EPSG:3006, a WGS84 GeoJSON polygon, and a ready-
+to-paste `python -m satmap_dataset.cli run` invocation. It uses `pyproj` if
+installed; otherwise it falls back to the system `proj` CLI.
+
+### Index 2010–2024 over Kisa
+
+```bash
+python -m satmap_dataset.cli index \
+  --provider lantmateriet \
+  --year-start 2010 \
+  --year-end 2024 \
+  --bbox "536194.910,6426213.280,538194.910,6428213.280" \
+  --srs EPSG:3006
+```
+
+### Run the full pipeline for Kisa
+
+```bash
+python -m satmap_dataset.cli run \
+  --provider lantmateriet \
+  --year-start 2010 \
+  --year-end 2024 \
+  --bbox "536194.910,6426213.280,538194.910,6428213.280" \
+  --srs EPSG:3006 \
+  --target-srs EPSG:3006 \
+  --sleep-min 0.8 \
+  --sleep-max 2.5 \
+  --concurrency 4 \
+  --render-root rendered_kisa \
+  --profile train
+```
+
+### Base + location JSON
+
+Pre-built configs live alongside the Polish ones:
+
+- `configs/run/base_lantmateriet.json` — defaults for the Sweden flow.
+- `configs/run/locations/kisa_sweden_2km.json` — Kisa center + 4 km² square.
+
+```bash
+python scripts/merge_json_config.py \
+  --base configs/run/base_lantmateriet.json \
+  --override configs/run/locations/kisa_sweden_2km.json \
+  --out configs/run/generated/kisa_sweden_2km.run.json
+
+python -m satmap_dataset.cli run-json configs/run/generated/kisa_sweden_2km.run.json
+```
+
+To enable the annual WMS fallback for years missing from STAC, set
+`wms_fallback_missing_years: true` in the merged config (or pass
+`--wms-fallback-missing-years` on the CLI). Falling back will still write
+`years_source_map[year] = "wms_fallback"` so downstream stages know the
+provenance per year.
+
+## Sentinel-2 / Element84 Earth Search provider
+
+A third provider, `sentinel2`, fetches Sentinel-2 L2A scenes from the
+[Element84 Earth Search](https://earth-search.aws.element84.com/v1/) STAC
+API. Unlike the Lantmäteriet and Geoportal flows, Sentinel-2 covers the
+**whole year, all seasons, including winter** at 10 m / px (3-band TCI
+COG). No auth required; assets sit on anonymous S3 (`sentinel-cogs.s3.us-
+west-2.amazonaws.com`).
+
+> Sentinel-2 scenes ship in their native MGRS UTM zone (e.g. EPSG:32633,
+> EPSG:32635). The render stage now reprojects via `gdalwarp` when the
+> source CRS differs from `target_srs`, with a single warp that clips +
+> resamples to the AOI grid in one pass. Install GDAL (`gdalwarp` on
+> PATH) before running cross-CRS jobs.
+
+### Year selection
+
+Sentinel-2 revisits every ~5 days, so each requested year has many
+candidate scenes rather than a single annual capture. The provider picks
+**one representative per year** that minimises the distance from a
+target day-of-year (default Feb 15, suitable for winter pairs vs the
+Lantmäteriet summer renders) and stays under a cloud-cover threshold:
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `provider_options.target_month` | `2` | Target month in DOY distance |
+| `provider_options.target_day` | `15` | Target day in DOY distance |
+| `provider_options.max_cloud_cover_pct` | `25.0` | Drop scenes with `eo:cloud_cover` above this |
+| `provider_options.preferred_asset_key` | `"visual"` | Asset to download (the 10 m TCI COG) |
+
+Set `max_cloud_cover_pct: null` to disable filtering, or move `target_day`
+to mid-July for a leaf-on summer pair.
+
+### Run a winter Kisa scene paired with Lantmäteriet
+
+```bash
+python scripts/merge_json_config.py \
+  --base configs/run/base_sentinel2.json \
+  --override configs/run/locations/kisa_winter.json \
+  --out configs/run/generated/kisa_winter.run.json
+
+python -m satmap_dataset.cli run-json configs/run/generated/kisa_winter.run.json
+```
+
+The output `rendered_kisa_winter/year_<Y>.tiff` lands at the same
+EPSG:3006 grid as the Lantmäteriet summer renders for the same AOI, so
+the two stacks can be loaded together as season-pair training data.
+
+### Run Helsinki in EPSG:3067 (Finland)
+
+```bash
+python scripts/merge_json_config.py \
+  --base configs/run/base_sentinel2.json \
+  --override configs/run/locations/helsinki_winter.json \
+  --out configs/run/generated/helsinki_winter.run.json
+
+python -m satmap_dataset.cli run-json configs/run/generated/helsinki_winter.run.json
+```
+
+### Cross-CRS notes
+
+- The provider warps to whatever `target_srs` you set. EPSG:3006 (Sweden),
+  EPSG:3067 (Finland TM35FIN) and any UTM zone (`EPSG:326NN` / `EPSG:327NN`)
+  are supported out of the box; the `.prj` sidecar is auto-generated for
+  UTM zones.
+- Reprojected source tiles are cached next to the downloaded COG under
+  `_reprojected/<src_stem>__epsg<N>_<sha>.tif` keyed by target_srs +
+  bbox + pixel size, so different AOIs / resolutions don't fight over
+  the same cache file.
+- For a Kisa-sized 2 km AOI the cache footprint is ~240 KB per
+  (year, target CRS).
+
+### Attribution
+
+Sentinel-2 imagery is published under the
+[Copernicus open data licence](https://sentinels.copernicus.eu/web/sentinel/terms-conditions).
+Cite as: *Contains modified Copernicus Sentinel data [year]*.
 
 ## Development checks
 

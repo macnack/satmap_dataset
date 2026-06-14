@@ -1,0 +1,9 @@
+{
+  "location_name": "Kisa",
+  "center_lat": 57.985,
+  "center_lon": 15.629,
+  "area_km2": 4.0,
+  "srs": "EPSG:3006",
+  "target_srs": "EPSG:3006",
+  "provider": "lantmateriet"
+}

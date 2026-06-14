@@ -79,7 +79,7 @@ def test_wfs_prefers_srs_compatible_and_rgb(monkeypatch) -> None:
 
     monkeypatch.setattr(wfs_client, "request_with_retry", fake_request_with_retry)
 
-    status, tiles, tile_bboxes = asyncio.run(
+    status, tiles, tile_bboxes, _ = asyncio.run(
         wfs_client.get_year_tiles(
             2015,
             "359700,504900,361700,506900",
@@ -115,7 +115,7 @@ def test_wfs_rejects_incompatible_grid_for_epsg2180(monkeypatch) -> None:
 
     monkeypatch.setattr(wfs_client, "request_with_retry", fake_request_with_retry)
 
-    status, tiles, tile_bboxes = asyncio.run(
+    status, tiles, tile_bboxes, _ = asyncio.run(
         wfs_client.get_year_tiles(
             2015,
             "359700,504900,361700,506900",
@@ -187,7 +187,7 @@ def test_wfs_uses_startindex_paging(monkeypatch) -> None:
     monkeypatch.setattr(wfs_client, "request_with_retry", fake_request_with_retry)
     monkeypatch.setattr(wfs_client, "DEFAULT_PAGE_SIZE", 2)
 
-    status, tiles, _ = asyncio.run(
+    status, tiles, _, _ = asyncio.run(
         wfs_client.get_year_tiles(
             2015,
             "359700,504900,361700,506900",
@@ -227,7 +227,7 @@ def test_wfs_normalizes_swapped_feature_bbox_axes(monkeypatch) -> None:
 
     monkeypatch.setattr(wfs_client, "request_with_retry", fake_request_with_retry)
 
-    status, _, tile_bboxes = asyncio.run(
+    status, _, tile_bboxes, _ = asyncio.run(
         wfs_client.get_year_tiles(
             2015,
             "359700,504900,361700,506900",

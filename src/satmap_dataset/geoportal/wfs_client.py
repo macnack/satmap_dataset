@@ -82,6 +82,19 @@ def _find_attr_value(feature: ET.Element, attr_name: str) -> str | None:
     return None
 
 
+def _find_timeinstant_value(feature: ET.Element, attr_name: str) -> str | None:
+    target = attr_name.lower()
+    for node in feature.iter():
+        if _local_name(node.tag).lower() != target:
+            continue
+        if node.text and node.text.strip():
+            return node.text.strip()
+        for child in node.iter():
+            if _local_name(child.tag).lower() == "timeposition" and child.text and child.text.strip():
+                return child.text.strip()
+    return None
+
+
 def _tile_id_from_url(url: str) -> str:
     name = Path(url).name
     stem = name.rsplit(".", 1)[0]
@@ -209,6 +222,29 @@ async def get_feature_count(
     return _parse_feature_count(root)
 
 
+def _parse_int_or_none(value: str | None) -> int | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    try:
+        return int(stripped)
+    except ValueError:
+        return None
+
+
+def _extract_tile_acquisition_metadata(feature: ET.Element, year: int) -> dict[str, int | str | None]:
+    acquisition_date = _find_timeinstant_value(feature, "akt_data")
+    publication_date = _find_timeinstant_value(feature, "dt_pzgik")
+    acquisition_year = _parse_int_or_none(_find_attr_value(feature, "akt_rok")) or year
+    return {
+        "acquisition_date": acquisition_date,
+        "publication_date": publication_date,
+        "acquisition_year": acquisition_year,
+    }
+
+
 async def get_year_tiles(
     year: int,
     bbox: str,
@@ -218,7 +254,7 @@ async def get_year_tiles(
     timeout: float = 20.0,
     retry_policy: RetryPolicy | None = None,
     year_to_typename: dict[int, str] | None = None,
-) -> tuple[YearStatus, dict[str, str], dict[str, list[float]]]:
+) -> tuple[YearStatus, dict[str, str], dict[str, list[float]], dict[str, dict[str, int | str | None]]]:
     mapping = year_to_typename
     if mapping is None:
         _, mapping = await get_capabilities(
@@ -239,10 +275,12 @@ async def get_year_tiles(
             ),
             {},
             {},
+            {},
         )
 
     tiles: dict[str, str] = {}
     tile_bboxes: dict[str, list[float]] = {}
+    tile_acquisition: dict[str, dict[str, int | str | None]] = {}
     request_bbox = _parse_bbox_str(bbox)
     tile_overlap_by_id: dict[str, float] = {}
     tile_color_priority_by_id: dict[str, int] = {}
@@ -296,6 +334,7 @@ async def get_year_tiles(
                 incompatible_grid_count += 1
                 continue
             tile_id = _tile_id_from_url(url_value)
+            acquisition_metadata = _extract_tile_acquisition_metadata(feature, year)
             color_priority = _color_priority(_find_attr_value(feature, "kolor"))
             feature_bbox = _extract_feature_bbox(feature)
             normalized_bbox = feature_bbox
@@ -315,6 +354,7 @@ async def get_year_tiles(
                 tiles[tile_id] = url_value
                 if normalized_bbox is not None:
                     tile_bboxes[tile_id] = [float(v) for v in normalized_bbox]
+                tile_acquisition[tile_id] = acquisition_metadata
                 tile_overlap_by_id[tile_id] = overlap
                 tile_color_priority_by_id[tile_id] = color_priority
                 continue
@@ -335,6 +375,7 @@ async def get_year_tiles(
                     tile_bboxes[tile_id] = [float(v) for v in normalized_bbox]
                 elif tile_id in tile_bboxes:
                     tile_bboxes.pop(tile_id, None)
+                tile_acquisition[tile_id] = acquisition_metadata
                 tile_overlap_by_id[tile_id] = overlap
                 tile_color_priority_by_id[tile_id] = color_priority
 
@@ -358,6 +399,7 @@ async def get_year_tiles(
             ),
             {},
             {},
+            {},
         )
 
     if not tiles:
@@ -375,6 +417,7 @@ async def get_year_tiles(
                 ),
                 {},
                 {},
+                {},
             )
         return (
             YearStatus(
@@ -384,6 +427,7 @@ async def get_year_tiles(
                 status="zero_features",
                 reason="Features found but url_do_pobrania is missing in AOI response.",
             ),
+            {},
             {},
             {},
         )
@@ -398,6 +442,7 @@ async def get_year_tiles(
         ),
         tiles,
         tile_bboxes,
+        tile_acquisition,
     )
 
 
@@ -411,7 +456,7 @@ async def probe_year(
     retry_policy: RetryPolicy | None = None,
     year_to_typename: dict[int, str] | None = None,
 ) -> YearStatus:
-    status, _, _ = await get_year_tiles(
+    status, _, _, _ = await get_year_tiles(
         year=year,
         bbox=bbox,
         srs=srs,

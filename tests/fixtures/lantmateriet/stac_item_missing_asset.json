@@ -1,0 +1,23 @@
+{
+  "type": "Feature",
+  "id": "ortofoto_2019_kisa_no_data_asset",
+  "collection": "ortofoto-arsvis",
+  "bbox": [536000.0, 6426000.0, 538500.0, 6428500.0],
+  "properties": {
+    "datetime": "2019-07-01T10:00:00Z",
+    "proj:epsg": 3006,
+    "gsd": 0.25
+  },
+  "assets": {
+    "thumbnail": {
+      "href": "https://example.org/lantmateriet/ortofoto/2019/kisa.jpg",
+      "type": "image/jpeg",
+      "roles": ["thumbnail"]
+    },
+    "metadata": {
+      "href": "https://example.org/lantmateriet/ortofoto/2019/kisa.json",
+      "type": "application/json",
+      "roles": ["metadata"]
+    }
+  }
+}

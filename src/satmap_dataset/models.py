@@ -18,11 +18,16 @@ class YearStatus(BaseModel):
     reason: str | None = None
 
 
+class TileAcquisitionMetadata(BaseModel):
+    acquisition_date: str | None = None
+    publication_date: str | None = None
+    acquisition_year: int | None = None
+
+
 class IndexManifest(BaseModel):
     kind: Literal["index_manifest"] = "index_manifest"
-    provider: Literal["geoportal", "nls"] = "geoportal"
-    provider_metadata: dict[str, Any] = Field(default_factory=dict)
     generated_at: datetime = Field(default_factory=_utc_now)
+    provider: str = "geoportal"
     year_start: int
     year_end: int
     bbox: str
@@ -38,20 +43,21 @@ class IndexManifest(BaseModel):
     common_tile_ids: list[str] = Field(default_factory=list)
     tile_sources_by_year: dict[int, dict[str, str]] = Field(default_factory=dict)
     tile_bboxes_by_year: dict[int, dict[str, list[float]]] = Field(default_factory=dict)
+    tile_acquisition_by_year: dict[int, dict[str, TileAcquisitionMetadata]] = Field(default_factory=dict)
     passed: bool
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     aoi_preview_html: str | None = None
     aoi_preview_png: str | None = None
     run_parameters: dict[str, Any] = Field(default_factory=dict)
+    provider_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class DatasetManifest(BaseModel):
     kind: Literal["dataset_manifest"] = "dataset_manifest"
-    provider: Literal["geoportal", "nls"] = "geoportal"
-    provider_metadata: dict[str, Any] = Field(default_factory=dict)
     stage: Literal["download", "mosaic", "render", "run"] = "download"
     generated_at: datetime = Field(default_factory=_utc_now)
+    provider: str = "geoportal"
     years_requested: list[int] = Field(default_factory=list)
     years_available_wfs: list[int] = Field(default_factory=list)
     years_included: list[int] = Field(default_factory=list)
@@ -59,16 +65,17 @@ class DatasetManifest(BaseModel):
     common_tile_ids: list[str] = Field(default_factory=list)
     tile_sources_by_year: dict[int, dict[str, str]] = Field(default_factory=dict)
     tile_bboxes_by_year: dict[int, dict[str, list[float]]] = Field(default_factory=dict)
+    tile_acquisition_by_year: dict[int, dict[str, TileAcquisitionMetadata]] = Field(default_factory=dict)
     assets: list[str] = Field(default_factory=list)
     source_manifest: str | None = None
-    mode: Literal["wms_tiled", "wfs_render", "hybrid", "wcs"] = "hybrid"
+    mode: Literal["wms_tiled", "wfs_render", "hybrid", "wcs", "stac"] = "hybrid"
     target_width: int | None = None
     target_height: int | None = None
     target_bbox: str | None = None
     target_srs: str | None = None
     profile: Literal["train", "reference"] | None = None
     px_per_meter: float | None = None
-    years_source_map: dict[int, Literal["wfs", "wms", "wms_fallback", "wcs"]] = Field(default_factory=dict)
+    years_source_map: dict[int, str] = Field(default_factory=dict)
     forced_wms_years: list[int] = Field(default_factory=list)
     color_qc_by_year: dict[int, dict[str, float | list[float] | None]] = Field(default_factory=dict)
     resample_method: str | None = None
@@ -81,6 +88,7 @@ class DatasetManifest(BaseModel):
     passed: bool = True
     notes: str | None = None
     run_parameters: dict[str, Any] = Field(default_factory=dict)
+    provider_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ValidationReport(BaseModel):

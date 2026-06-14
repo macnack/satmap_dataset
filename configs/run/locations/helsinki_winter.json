@@ -1,0 +1,9 @@
+{
+  "location_name": "Helsinki_winter",
+  "center_lat": 60.17,
+  "center_lon": 24.94,
+  "area_km2": 4.0,
+  "srs": "EPSG:3067",
+  "target_srs": "EPSG:3067",
+  "provider": "sentinel2"
+}

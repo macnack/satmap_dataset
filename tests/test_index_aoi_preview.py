@@ -25,7 +25,8 @@ def test_index_writes_aoi_preview_html_and_png(monkeypatch, tmp_path: Path) -> N
         ]
         tiles = {2023: {"TILE_1": "https://example.com/TILE_1.tif"}}
         tile_bboxes = {2023: {"TILE_1": [359700.0, 504900.0, 361700.0, 506900.0]}}
-        return statuses, tiles, tile_bboxes
+        tile_acquisition: dict[int, dict[str, dict[str, int | str | None]]] = {2023: {}}
+        return statuses, tiles, tile_bboxes, tile_acquisition
 
     monkeypatch.setattr(index_builder, "probe_years_wfs_with_tiles", fake_probe)
 

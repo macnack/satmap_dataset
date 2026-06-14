@@ -9,7 +9,6 @@ import tifffile
 
 from satmap_dataset.config import ValidateConfig
 from satmap_dataset.models import DatasetManifest, ValidationReport
-from satmap_dataset.pipeline.render import _KNOWN_PROJ_WKT
 
 logger = logging.getLogger("satmap_dataset.validate")
 
@@ -196,17 +195,6 @@ def _bbox_within_tolerance(actual: BBox, expected: BBox, tol_x: float, tol_y: fl
     )
 
 
-def _epsg_code(srs: str) -> int | None:
-    """Parse the integer EPSG code from a string like 'EPSG:3067'."""
-    upper = srs.strip().upper()
-    if not upper.startswith("EPSG:"):
-        return None
-    try:
-        return int(upper.split(":", 1)[1])
-    except ValueError:
-        return None
-
-
 def _validate_sidecars(asset_path: Path, target_srs: str) -> list[str]:
     errors: list[str] = []
     tfw = asset_path.with_suffix(".tfw")
@@ -224,24 +212,38 @@ def _validate_sidecars(asset_path: Path, target_srs: str) -> list[str]:
             except ValueError:
                 errors.append(f"World file contains non-numeric values for {asset_path.name}")
 
-    epsg = _epsg_code(target_srs)
-    if epsg is None:
-        return errors
-    # Render writes a .prj sidecar for every EPSG it knows the WKT for; check the
-    # AUTHORITY tag matches the target_srs declared in the manifest. For a known
-    # EPSG a missing .prj is a real defect (render always writes one), so flag
-    # it. For CRSes render has no WKT for, render intentionally skips the .prj —
-    # don't fail validation just because the WKT lookup is incomplete.
-    if not prj.exists():
-        if epsg in _KNOWN_PROJ_WKT:
+    expected_srs = target_srs.upper()
+    fallback_markers_by_srs = {
+        "EPSG:2180": ("CS92",),
+        "EPSG:3006": ("SWEREF99 TM",),
+        "EPSG:3067": ("TM35FIN", "ETRS89"),
+    }
+    expected_code: str | None = None
+    if expected_srs.startswith("EPSG:"):
+        expected_code = expected_srs.split(":", 1)[1]
+    is_known = expected_srs in fallback_markers_by_srs or _is_utm_epsg(expected_srs)
+    if is_known and expected_code is not None:
+        if not prj.exists():
             errors.append(f"Missing projection file for {asset_path.name}: {prj.name}")
-        return errors
-    prj_text = prj.read_text(encoding="ascii", errors="ignore")
-    if f'EPSG","{epsg}"' not in prj_text:
-        errors.append(
-            f"Projection file does not indicate EPSG:{epsg} for {asset_path.name}"
-        )
+        else:
+            prj_text = prj.read_text(encoding="ascii", errors="ignore")
+            marker_in_authority = f'EPSG","{expected_code}'
+            extra_markers = fallback_markers_by_srs.get(expected_srs, ())
+            if marker_in_authority not in prj_text and not any(m in prj_text for m in extra_markers):
+                errors.append(
+                    f"Projection file does not indicate {expected_srs} for {asset_path.name}"
+                )
     return errors
+
+
+def _is_utm_epsg(srs: str) -> bool:
+    if not srs.startswith("EPSG:"):
+        return False
+    try:
+        code = int(srs.split(":", 1)[1])
+    except ValueError:
+        return False
+    return 32601 <= code <= 32660 or 32701 <= code <= 32760
 
 
 def run(config: ValidateConfig) -> tuple[int, Path]:
@@ -310,7 +312,13 @@ def run(config: ValidateConfig) -> tuple[int, Path]:
                 report.passed = False
 
             georef_bbox, epsg = _read_georef_bbox_and_epsg(asset_path)
-            expected_epsg = _epsg_code(target_srs)
+            expected_epsg_by_srs = {"EPSG:2180": 2180, "EPSG:3006": 3006, "EPSG:3067": 3067}
+            expected_epsg = expected_epsg_by_srs.get(target_srs)
+            if expected_epsg is None and _is_utm_epsg(target_srs):
+                try:
+                    expected_epsg = int(target_srs.split(":", 1)[1])
+                except ValueError:
+                    expected_epsg = None
             if expected_epsg is not None and epsg != expected_epsg:
                 report.errors.append(
                     f"Invalid GeoTIFF EPSG for {asset}: {epsg} expected {expected_epsg}"

@@ -32,10 +32,11 @@ index-location-json location_json="configs/run/locations/poznan.json" base_json=
   loc="{{location_json}}"; loc="${loc#location_json=}"; base="{{base_json}}"; base="${base#base_json=}"; name="$(basename "$loc" .json)"; mkdir -p configs/run/generated; python scripts/merge_json_config.py --base "$base" --override "$loc" --out "configs/run/generated/${name}.run.json"; python -m satmap_dataset.cli index-json "configs/run/generated/${name}.run.json"
 
 # Index all locations from configs/run/locations.
-index-all year-start="2015" year-end="2025":
+index-all year-start="2015" year-end="2025" continue_on_error="--continue-on-error":
   python scripts/index_all_locations.py \
     --year-start {{year-start}} \
-    --year-end {{year-end}}
+    --year-end {{year-end}} \
+    {{continue_on_error}}
 
 # Full run for all locations (base + location JSON mode).
 run-all locations_dir="configs/run/locations" base_json="configs/run/base.json" continue_on_error="--continue-on-error":

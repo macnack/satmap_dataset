@@ -34,13 +34,19 @@ async def _probe_years_wfs_async(
     requested_years: list[int],
     bbox: str,
     srs: str,
-) -> tuple[list[YearStatus], dict[int, dict[str, str]], dict[int, dict[str, list[float]]]]:
+) -> tuple[
+    list[YearStatus],
+    dict[int, dict[str, str]],
+    dict[int, dict[str, list[float]]],
+    dict[int, dict[str, dict[str, int | str | None]]],
+]:
     logger.info("Index: probing WFS capabilities and yearly tiles for %d years", len(requested_years))
     retry_policy = RetryPolicy(max_attempts=10, backoff_seconds=1.2, jitter_seconds=0.8)
     _, year_to_typename = await get_capabilities(timeout=45.0, retry_policy=retry_policy)
     results: list[YearStatus] = []
     tile_sources_by_year: dict[int, dict[str, str]] = {}
     tile_bboxes_by_year: dict[int, dict[str, list[float]]] = {}
+    tile_acquisition_by_year: dict[int, dict[str, dict[str, int | str | None]]] = {}
     with Progress(
         TextColumn("[cyan]Index years"),
         BarColumn(),
@@ -52,7 +58,7 @@ async def _probe_years_wfs_async(
         for year in requested_years:
             # Geoportal WFS is sensitive to bursts even for sequential calls.
             await asyncio.sleep(random.uniform(0.6, 1.8))
-            status, year_tiles, year_tile_bboxes = await get_year_tiles(
+            status, year_tiles, year_tile_bboxes, year_tile_acquisition = await get_year_tiles(
                     year=year,
                     bbox=bbox,
                     srs=srs,
@@ -63,6 +69,7 @@ async def _probe_years_wfs_async(
             results.append(status)
             tile_sources_by_year[year] = year_tiles
             tile_bboxes_by_year[year] = year_tile_bboxes
+            tile_acquisition_by_year[year] = year_tile_acquisition
             logger.info(
                 "Index: year=%s status=%s features=%s tiles=%s",
                 year,
@@ -71,7 +78,7 @@ async def _probe_years_wfs_async(
                 len(year_tiles),
             )
             progress.advance(task_id)
-    return results, tile_sources_by_year, tile_bboxes_by_year
+    return results, tile_sources_by_year, tile_bboxes_by_year, tile_acquisition_by_year
 
 
 def probe_years_wfs(
@@ -90,7 +97,12 @@ def probe_years_wfs_with_tiles(
     year_start: int,
     year_end: int,
     srs: str = "EPSG:2180",
-) -> tuple[list[YearStatus], dict[int, dict[str, str]], dict[int, dict[str, list[float]]]]:
+) -> tuple[
+    list[YearStatus],
+    dict[int, dict[str, str]],
+    dict[int, dict[str, list[float]]],
+    dict[int, dict[str, dict[str, int | str | None]]],
+]:
     requested_years = list(range(year_start, year_end + 1))
     return asyncio.run(_probe_years_wfs_async(requested_years, aoi, srs))
 
@@ -123,11 +135,7 @@ def run(config: IndexConfig) -> tuple[int, Path]:
         year_end=config.year_end,
         srs=config.srs,
     )
-    if len(probe_result) == 3:
-        year_statuses, tile_sources_full, tile_bboxes_full = probe_result
-    else:
-        year_statuses, tile_sources_full = probe_result
-        tile_bboxes_full = {}
+    year_statuses, tile_sources_full, tile_bboxes_full, tile_acquisition_full = probe_result
     years_available_wfs = [entry.year for entry in year_statuses if entry.status == "has_features"]
     years_excluded_with_reason = {
         entry.year: (entry.reason or entry.status)
@@ -153,6 +161,7 @@ def run(config: IndexConfig) -> tuple[int, Path]:
 
     tile_sources_by_year = {year: tile_sources_full.get(year, {}) for year in policy.years_included}
     tile_bboxes_by_year = {year: tile_bboxes_full.get(year, {}) for year in policy.years_included}
+    tile_acquisition_by_year = {year: tile_acquisition_full.get(year, {}) for year in policy.years_included}
     common_tile_ids: list[str] = []
     if policy.years_included:
         tile_id_sets = [set(tile_sources_by_year.get(year, {}).keys()) for year in policy.years_included]
@@ -220,6 +229,7 @@ def run(config: IndexConfig) -> tuple[int, Path]:
         common_tile_ids=common_tile_ids,
         tile_sources_by_year=tile_sources_by_year,
         tile_bboxes_by_year=tile_bboxes_by_year,
+        tile_acquisition_by_year=tile_acquisition_by_year,
         passed=policy.passed and bool(years_available_wfs),
         errors=errors,
         warnings=warnings,

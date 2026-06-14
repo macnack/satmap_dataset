@@ -191,8 +191,18 @@ def test_dataset_manifest_accepts_nls_provider_and_wcs_mode() -> None:
     assert m.mode == "wcs"
 
 
-def test_dataset_manifest_rejects_unknown_provider() -> None:
+def test_dataset_manifest_accepts_any_provider_string() -> None:
+    # Manifests are write-side serialization artifacts produced by trusted
+    # provider code, so `provider` is a free string. Provider validation lives
+    # in the config layer (see test_config_rejects_unknown_provider below).
+    m = DatasetManifest(provider="lantmateriet")
+    assert m.provider == "lantmateriet"
+
+
+def test_config_rejects_unknown_provider() -> None:
     from pydantic import ValidationError
 
+    from satmap_dataset.config import DownloadConfig
+
     with pytest.raises(ValidationError):
-        DatasetManifest(provider="unknown")
+        DownloadConfig(provider="unknown")

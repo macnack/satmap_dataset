@@ -1,0 +1,106 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "S2A_33VWE_20220213_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "bbox": [15.5, 57.9, 15.7, 58.05],
+      "properties": {
+        "datetime": "2022-02-13T10:14:00Z",
+        "eo:cloud_cover": 4.5,
+        "proj:epsg": 32633,
+        "gsd": 10
+      },
+      "assets": {
+        "visual": {
+          "href": "https://example.org/sentinel2/2022_02_13_visual.tif",
+          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+          "roles": ["visual"]
+        },
+        "red": {
+          "href": "https://example.org/sentinel2/2022_02_13_B04.tif",
+          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+          "roles": ["data"]
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "S2B_33VWE_20220225_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "bbox": [15.5, 57.9, 15.7, 58.05],
+      "properties": {
+        "datetime": "2022-02-25T10:14:00Z",
+        "eo:cloud_cover": 60.2,
+        "proj:epsg": 32633,
+        "gsd": 10
+      },
+      "assets": {
+        "visual": {
+          "href": "https://example.org/sentinel2/2022_02_25_visual.tif",
+          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+          "roles": ["visual"]
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "S2A_33VWE_20230212_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "bbox": [15.5, 57.9, 15.7, 58.05],
+      "properties": {
+        "datetime": "2023-02-12T10:14:00Z",
+        "eo:cloud_cover": 8.1,
+        "proj:epsg": 32633,
+        "gsd": 10
+      },
+      "assets": {
+        "visual": {
+          "href": "https://example.org/sentinel2/2023_02_12_visual.tif",
+          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+          "roles": ["visual"]
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "S2B_33VWE_20240118_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "bbox": [15.5, 57.9, 15.7, 58.05],
+      "properties": {
+        "datetime": "2024-01-18T10:14:00Z",
+        "eo:cloud_cover": 1.0,
+        "proj:epsg": 32633,
+        "gsd": 10
+      },
+      "assets": {
+        "visual": {
+          "href": "https://example.org/sentinel2/2024_01_18_visual.tif",
+          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+          "roles": ["visual"]
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "S2A_33VWE_20240217_0_L2A",
+      "collection": "sentinel-2-l2a",
+      "bbox": [15.5, 57.9, 15.7, 58.05],
+      "properties": {
+        "datetime": "2024-02-17T10:14:00Z",
+        "eo:cloud_cover": 12.5,
+        "proj:epsg": 32633,
+        "gsd": 10
+      },
+      "assets": {
+        "visual": {
+          "href": "https://example.org/sentinel2/2024_02_17_visual.tif",
+          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+          "roles": ["visual"]
+        }
+      }
+    }
+  ],
+  "links": []
+}

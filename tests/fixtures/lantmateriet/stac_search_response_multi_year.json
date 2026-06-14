@@ -1,0 +1,80 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "ortofoto_2018_kisa",
+      "collection": "ortofoto-arsvis",
+      "bbox": [536000.0, 6426000.0, 538500.0, 6428500.0],
+      "properties": {
+        "datetime": "2018-08-21T09:30:00Z",
+        "proj:epsg": 3006,
+        "gsd": 0.25,
+        "license": "CC-BY-4.0",
+        "attribution": "© Lantmäteriet"
+      },
+      "assets": {
+        "geotiff": {
+          "href": "https://example.org/lantmateriet/ortofoto/2018/kisa.tif",
+          "type": "image/tiff; application=geotiff",
+          "roles": ["data"]
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "ortofoto_2020_kisa",
+      "collection": "ortofoto-arsvis",
+      "bbox": [535000.0, 6425000.0, 539000.0, 6429000.0],
+      "properties": {
+        "datetime": "2020-07-04T11:00:00Z",
+        "proj:epsg": 3006,
+        "gsd": 0.16
+      },
+      "assets": {
+        "data": {
+          "href": "https://example.org/lantmateriet/ortofoto/2020/kisa_low_overlap.tif",
+          "type": "image/tiff",
+          "roles": ["data"]
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "ortofoto_2020_kisa_better",
+      "collection": "ortofoto-arsvis",
+      "bbox": [536100.0, 6426100.0, 538300.0, 6428300.0],
+      "properties": {
+        "datetime": "2020-09-01T11:00:00Z",
+        "proj:epsg": 3006,
+        "gsd": 0.16
+      },
+      "assets": {
+        "data": {
+          "href": "https://example.org/lantmateriet/ortofoto/2020/kisa_high_overlap.tif",
+          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+          "roles": ["data"]
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "ortofoto_2024_kisa",
+      "collection": "ortofoto-arsvis",
+      "bbox": [536000.0, 6426000.0, 538500.0, 6428500.0],
+      "properties": {
+        "datetime": "2024-05-30T10:30:00Z",
+        "proj:epsg": 3006,
+        "gsd": 0.16
+      },
+      "assets": {
+        "cog": {
+          "href": "https://example.org/lantmateriet/ortofoto/2024/kisa.tif",
+          "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+          "roles": ["data"]
+        }
+      }
+    }
+  ],
+  "links": []
+}
