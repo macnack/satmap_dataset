@@ -68,7 +68,7 @@ class DatasetManifest(BaseModel):
     tile_acquisition_by_year: dict[int, dict[str, TileAcquisitionMetadata]] = Field(default_factory=dict)
     assets: list[str] = Field(default_factory=list)
     source_manifest: str | None = None
-    mode: Literal["wms_tiled", "wfs_render", "hybrid", "stac"] = "hybrid"
+    mode: Literal["wms_tiled", "wfs_render", "hybrid", "wcs", "stac"] = "hybrid"
     target_width: int | None = None
     target_height: int | None = None
     target_bbox: str | None = None

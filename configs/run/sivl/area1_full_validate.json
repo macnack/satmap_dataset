@@ -1,0 +1,7 @@
+{
+  "dataset_manifest": "artifacts_sivl_area1_full/dataset_manifest_render.json",
+  "requested_years": [2011, 2015, 2018],
+  "strict_years": false,
+  "min_years": 1,
+  "output_json": "artifacts_sivl_area1_full/validation_report.json"
+}

@@ -1325,6 +1325,95 @@ def validate_all_location_json_command(
     raise typer.Exit(code=0)
 
 
+def _nls_force_provider(payload: dict) -> dict:
+    """Pin provider='nls' on the payload so the NLS-specific config validators run.
+
+    Without this, a config that omits `provider` (or sets `provider='geoportal'`)
+    would skip the EPSG:3067 srs guard even though we're about to run NlsProvider.
+    """
+    payload = dict(payload)
+    payload["provider"] = "nls"
+    return payload
+
+
+@app.command("nls-index-json")
+def nls_index_json(config_json: Path = typer.Argument(..., exists=True)) -> None:
+    from satmap_dataset.providers.nls import NlsProvider
+
+    payload = _nls_force_provider(json.loads(config_json.read_text(encoding="utf-8")))
+    try:
+        cfg = IndexConfig(**payload)
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+    exit_code, artifact = NlsProvider().index(cfg)
+    _finish(exit_code, artifact)
+
+
+def _nls_build_download_config(payload: dict, index_manifest_path: Path) -> DownloadConfig:
+    """Construct a DownloadConfig from an NLS run/index JSON payload.
+
+    Treats payload['output_json'] as the *index* manifest path (matching the
+    SIVL config naming convention) and writes the download manifest as a
+    sibling. Without this, DownloadConfig.output_json would shadow
+    DownloadConfig.index_manifest and the download stage would read
+    artifacts/index_manifest.json instead of the file the index step wrote.
+    """
+    download_payload = {k: v for k, v in payload.items() if k in DownloadConfig.model_fields}
+    download_payload["index_manifest"] = str(index_manifest_path)
+    download_payload["output_json"] = str(
+        index_manifest_path.parent / "dataset_manifest_download.json"
+    )
+    download_payload.setdefault("provider", "nls")
+    download_payload.setdefault("provider_options", payload.get("provider_options", {}))
+    download_payload.setdefault("bbox", payload.get("bbox"))
+    download_payload.setdefault("srs", payload.get("srs", "EPSG:3067"))
+    return DownloadConfig(**download_payload)
+
+
+@app.command("nls-download-json")
+def nls_download_json(config_json: Path = typer.Argument(..., exists=True)) -> None:
+    from satmap_dataset.providers.nls import NlsProvider
+
+    payload = _nls_force_provider(json.loads(config_json.read_text(encoding="utf-8")))
+    try:
+        # Parse as IndexConfig to learn where the index manifest lives
+        # (the SIVL configs use a single output_json field for the index path).
+        index_cfg = IndexConfig(
+            **{k: v for k, v in payload.items() if k in IndexConfig.model_fields}
+        )
+        cfg = _nls_build_download_config(payload, index_cfg.output_json)
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+    exit_code, artifact = NlsProvider().download(cfg)
+    _finish(exit_code, artifact)
+
+
+@app.command("nls-run-json")
+def nls_run_json(config_json: Path = typer.Argument(..., exists=True)) -> None:
+    """Single-shot NLS index + download from one JSON config."""
+    from satmap_dataset.providers.nls import NlsProvider
+
+    payload = _nls_force_provider(json.loads(config_json.read_text(encoding="utf-8")))
+    try:
+        index_cfg = IndexConfig(**{k: v for k, v in payload.items() if k in IndexConfig.model_fields})
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+    provider = NlsProvider()
+    exit_code, index_artifact = provider.index(index_cfg)
+    if exit_code != 0:
+        _finish(exit_code, index_artifact)
+    try:
+        download_cfg = _nls_build_download_config(payload, index_artifact)
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+    exit_code, artifact = provider.download(download_cfg)
+    _finish(exit_code, artifact)
+
+
 def main() -> None:
     configure_logging("INFO")
     app()

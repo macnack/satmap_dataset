@@ -9,7 +9,13 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 PROVIDER_GEOPORTAL = "geoportal"
 PROVIDER_LANTMATERIET = "lantmateriet"
 PROVIDER_SENTINEL2 = "sentinel2"
-ALLOWED_PROVIDERS = {PROVIDER_GEOPORTAL, PROVIDER_LANTMATERIET, PROVIDER_SENTINEL2}
+PROVIDER_NLS = "nls"
+ALLOWED_PROVIDERS = {
+    PROVIDER_GEOPORTAL,
+    PROVIDER_LANTMATERIET,
+    PROVIDER_SENTINEL2,
+    PROVIDER_NLS,
+}
 
 
 def _validate_bbox(value: str) -> str:
@@ -26,6 +32,18 @@ def _validate_bbox(value: str) -> str:
         raise ValueError("bbox must satisfy xmin<xmax and ymin<ymax")
 
     return value
+
+
+_NLS_NATIVE_SRS = "EPSG:3067"
+
+
+def _validate_provider_srs(provider: str, srs: str) -> None:
+    if provider == "nls" and srs.upper() != _NLS_NATIVE_SRS:
+        raise ValueError(
+            f"provider='nls' requires srs='{_NLS_NATIVE_SRS}' (NLS WCS/OAPIF "
+            f"only accept TM35FIN coordinates); got srs={srs!r}. "
+            "Reproject your bbox to EPSG:3067 before configuring an NLS run."
+        )
 
 
 class IndexConfig(BaseModel):
@@ -57,6 +75,7 @@ class IndexConfig(BaseModel):
     def validate_year_range(self) -> "IndexConfig":
         if self.year_end < self.year_start:
             raise ValueError("year_end must be >= year_start")
+        _validate_provider_srs(self.provider, self.srs)
         return self
 
     @property
@@ -96,6 +115,7 @@ class DownloadConfig(BaseModel):
     def validate_sleep_range(self) -> "DownloadConfig":
         if self.sleep_max < self.sleep_min:
             raise ValueError("sleep_max must be >= sleep_min")
+        _validate_provider_srs(self.provider, self.srs)
         if self.provider == PROVIDER_GEOPORTAL:
             allowed_modes = {"wms_tiled", "wfs_render", "hybrid"}
             if self.mode not in allowed_modes:

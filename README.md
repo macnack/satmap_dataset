@@ -177,6 +177,34 @@ dataset = SatelliteSeasonalHomographyDataset(
 
 The folder contains `year_YYYY.tif` with consistent width/height and `RGB_U8` profile.
 
+## Finland (Maanmittauslaitos / NLS) provider
+
+The `nls` provider downloads year-aware orthophotos via Maanmittauslaitos's open
+WCS endpoint. License: CC BY 4.0. Requires a free API key from
+https://omatili.maanmittauslaitos.fi/ — paste it into a `.secret` file at the
+repo root, set `SATMAP_NLS_API_KEY`, or pass it via `provider_options.api_key`.
+
+The NLS WCS rejects GetCoverage requests larger than 2000 m on either side, so
+AOIs above that cap are split into an even grid of ≤ 2 km cells (one GetCoverage
+URL per year + cell) and mosaicked back together at render via each tile's
+embedded georef. A sub-cap AOI still produces a single tile. Only AOIs that
+would fan out past `MAX_WCS_GRID_CELLS` (64) cells are rejected at index time.
+
+```bash
+# Index + download in one shot
+python -m satmap_dataset.cli nls-run-json configs/run/base_nls.json
+
+# Or run stages separately
+python -m satmap_dataset.cli nls-index-json configs/run/base_nls.json
+python -m satmap_dataset.cli nls-download-json configs/run/base_nls.json
+```
+
+The downloaded GeoTIFFs land under `<download_root>/<year>/nls_<year>.tif` (or
+`nls_<year>_<col>_<row>.tif` per cell for tiled AOIs) and are consumed by the
+existing `render` and `validate` stages unchanged. Set
+`provider_options.require_full_grid_coverage: true` to exclude any year whose
+grid is not fully covered, instead of keeping a partial mosaic.
+
 ## Sweden / Lantmäteriet provider
 
 The pipeline supports two providers, selected via `--provider` (CLI) or the
