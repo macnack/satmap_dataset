@@ -27,7 +27,7 @@ from satmap_dataset.config import (
     RunConfig,
     ValidateConfig,
 )
-from satmap_dataset.pipeline import dem, dem_availability, downloader, index_builder, render, run_all, validator, osm as osm_pipeline
+from satmap_dataset.pipeline import dem, dem_availability, downloader, index_builder, location_run, render, run_all, validator, osm as osm_pipeline
 from satmap_dataset.providers import get_provider
 
 app = typer.Typer(help="satmap_dataset CLI (WFS-first pipeline)", no_args_is_help=True)
@@ -1156,6 +1156,67 @@ def run_location_json_command(
         raise typer.Exit(code=2) from error
 
     exit_code, artifact_path = run_all.run(config)
+    _finish(exit_code, artifact_path)
+
+
+@app.command("location-run-json")
+def location_run_json_command(
+    location_json: Path = typer.Argument(..., help="Path to location JSON (location_name, center_lat, center_lon)."),
+    base_json: Path = typer.Option(
+        Path("configs/run/base.json"),
+        "--base-json",
+        help="Path to base JSON with shared run parameters.",
+    ),
+    dem: bool = typer.Option(
+        True, "--dem/--no-dem", help="Produce the DEM layer aligned to the RGB grid."
+    ),
+    osm: bool = typer.Option(
+        True, "--osm/--no-osm", help="Produce the OSM label layer aligned to the RGB grid."
+    ),
+    validate: bool = typer.Option(
+        True, "--validate/--no-validate", help="Run the validator on the RGB layer manifest."
+    ),
+) -> None:
+    """Produce the aligned RGB + DEM + OSM stack for one location in one pass.
+
+    Unlike ``run-location-json`` (RGB only), this drives the layer orchestrator:
+    the RGB layer defines the shared ReferenceGrid and the DEM/OSM layers align
+    to it in memory (no re-reading a render manifest from disk).
+    """
+    try:
+        rgb_config = _build_run_config_from_base_and_location(
+            base_json=base_json, location_json=location_json
+        )
+        dem_config = (
+            _build_dem_config_from_base_and_location(
+                base_json=base_json, location_json=location_json
+            )
+            if dem
+            else None
+        )
+        osm_config = (
+            _build_osm_config_from_base_and_location(
+                base_json=base_json, location_json=location_json
+            )
+            if osm
+            else None
+        )
+    except typer.BadParameter as error:
+        console.print(f"[red]{error}[/red]")
+        raise typer.Exit(code=2) from error
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+
+    exit_code, artifact_path = location_run.run_location(
+        rgb_config=rgb_config,
+        dem_config=dem_config,
+        osm_config=osm_config,
+        artifacts_dir=rgb_config.artifacts_dir,
+        run_dem=dem,
+        run_osm=osm,
+        validate=validate,
+    )
     _finish(exit_code, artifact_path)
 
 
