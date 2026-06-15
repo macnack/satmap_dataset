@@ -40,6 +40,7 @@ def _load_igc(path: Path) -> list[TrackPoint]:
         if not line.startswith("B") or len(line) < 24:
             continue
         try:
+            # IGC DDMMmmmN: 5-digit field = whole_minutes*1000 + thousandths; /60000 = /60/1000
             lat = int(line[7:9]) + int(line[9:14]) / 60000.0
             if line[14] == "S":
                 lat = -lat
