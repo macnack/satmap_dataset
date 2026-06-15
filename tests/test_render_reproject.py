@@ -172,6 +172,28 @@ def test_reproject_with_target_bbox_uses_te_te_srs_tr(
     assert float(cmd[tr_index + 2]) == 10.0
 
 
+def test_reproject_emits_dstalpha_band(
+    tmp_path: Path, monkeypatch, _isolate_subprocess
+) -> None:
+    """gdalwarp must emit an alpha band so padded / rotation-triangle pixels are
+    distinguishable from real data at mosaic time. Without it, the black padding
+    (each reprojected tile is expanded to the full AOI extent) overwrites
+    neighbouring tiles and the render comes out mostly black."""
+    src = tmp_path / "scene.tif"
+    src.write_bytes(b"x")
+    monkeypatch.setattr(render, "_read_source_epsg", lambda _p: 32633)
+
+    render._reproject_asset_to_target_crs(
+        src,
+        target_srs="EPSG:3006",
+        resample_method="bilinear",
+        target_bbox=render.BBox(min_x=0, min_y=0, max_x=2000, max_y=2000),
+        target_pixel_size=10.0,
+    )
+    cmd = _isolate_subprocess[0]
+    assert "-dstalpha" in cmd
+
+
 def test_reproject_cache_key_differs_per_bbox_and_pixel_size(
     tmp_path: Path, monkeypatch, _isolate_subprocess
 ) -> None:

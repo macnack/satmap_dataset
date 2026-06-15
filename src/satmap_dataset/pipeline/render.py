@@ -279,6 +279,9 @@ def _reproject_cache_filename(
         "epsg": target_epsg,
         "resample": resample_method,
         "margin": margin_meters,
+        # Bumped when gdalwarp gained -dstalpha; invalidates pre-fix 3-band
+        # cache files that would otherwise still render as black padding.
+        "alpha": True,
     }
     if target_bbox is not None:
         payload["bbox"] = [
@@ -351,6 +354,12 @@ def _reproject_asset_to_target_crs(
         "-co", "COMPRESS=DEFLATE",
         "-co", "TILED=YES",
         "-co", "BIGTIFF=IF_SAFER",
+        # Emit an alpha band so the AOI-padding (and rotation triangles left by
+        # reprojecting a tile into an axis-aligned grid) is distinguishable from
+        # real data. The mosaic in `_render_year` honours this alpha; without it
+        # every reprojected tile is expanded to the full AOI and its black
+        # padding overwrites neighbouring tiles -> mostly-black render.
+        "-dstalpha",
         "-q",
         "-overwrite",
     ]
@@ -663,6 +672,9 @@ def _render_cache_signature(
         "compression": config.compression,
         "tile_size": config.tile_size,
         "source_axis_mode": source_axis_mode,
+        # Bumped when reprojected tiles became alpha-masked; pre-fix renders of
+        # reprojected years were (near) black and must not be reused.
+        "reproject_alpha_masking": 1,
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -914,13 +926,19 @@ def _render_year(
 
     canvas = pyvips.Image.black(target_width, target_height, bands=3).copy(interpretation="srgb")
     for asset in assets:
+        # Reprojected tiles (gdalwarp output under _reprojected/) are always in
+        # standard target-CRS axis order and carry an alpha band marking valid
+        # data, so never apply the WFS axis swap to them and honour their alpha.
+        is_reprojected = asset.parent.name == "_reprojected"
+        axis_mode = "normal" if is_reprojected else source_axis_mode
+
         georef = _read_georef(asset)
-        src_bbox = _bbox_from_swapped_axis_georef(georef) if source_axis_mode == "swapped" else _bbox_from_georef(georef)
+        src_bbox = _bbox_from_swapped_axis_georef(georef) if axis_mode == "swapped" else _bbox_from_georef(georef)
         inter = _intersection(src_bbox, target_bbox)
         if inter is None:
             continue
 
-        if source_axis_mode == "swapped":
+        if axis_mode == "swapped":
             sx0, sy0, sx1, sy1 = _to_source_pixels_swapped(inter, georef)
         else:
             sx0, sy0, sx1, sy1 = _to_source_pixels(inter, georef)
@@ -934,10 +952,26 @@ def _render_year(
             continue
 
         tile = pyvips.Image.new_from_file(str(asset), access="sequential")
+        alpha = None
+        if is_reprojected:
+            if tile.bands < 4:
+                # A reprojected tile must carry the gdalwarp alpha band; without
+                # it the AOI padding can't be masked and would overwrite
+                # neighbours (mostly-black render). Fail loudly instead of
+                # silently degrading — surfaced as a per-year render error.
+                raise RuntimeError(
+                    f"Reprojected tile {asset} has {tile.bands} bands but no alpha "
+                    "channel; delete its _reprojected/ cache and re-render so "
+                    "gdalwarp regenerates it with -dstalpha."
+                )
+            alpha = tile.extract_band(3)
+            tile = tile.extract_band(0, n=3)
         tile = _force_srgb_if_requested(tile, force_srgb_from_ycbcr)
         tile = _harmonize_rgb_u8(tile)
         tile = tile.crop(sx0, sy0, src_w, src_h)
-        if source_axis_mode == "swapped":
+        if alpha is not None:
+            alpha = alpha.crop(sx0, sy0, src_w, src_h)
+        if axis_mode == "swapped":
             tile = _apply_swapped_axis_orientation(tile)
             src_w = tile.width
             src_h = tile.height
@@ -946,13 +980,26 @@ def _render_year(
         x_scale = dst_w / src_w
         y_scale = dst_h / src_h
         tile = tile.resize(x_scale, vscale=y_scale, kernel=kernel)
+        if alpha is not None:
+            # Nearest keeps the data/padding boundary crisp (no feathered black).
+            alpha = alpha.resize(x_scale, vscale=y_scale, kernel="nearest")
 
         if tile.width != dst_w or tile.height != dst_h:
             tile = tile.crop(0, 0, min(tile.width, dst_w), min(tile.height, dst_h))
+            if alpha is not None:
+                alpha = alpha.crop(0, 0, min(alpha.width, dst_w), min(alpha.height, dst_h))
             if tile.width != dst_w or tile.height != dst_h:
                 pad_w = max(0, dst_w - tile.width)
                 pad_h = max(0, dst_h - tile.height)
                 tile = tile.embed(0, 0, tile.width + pad_w, tile.height + pad_h, extend="black")
+                if alpha is not None:
+                    alpha = alpha.embed(0, 0, alpha.width + pad_w, alpha.height + pad_h, extend="black")
+
+        if alpha is not None:
+            # Only overwrite the canvas where the tile actually has data; keep the
+            # existing canvas (earlier tiles / black) under the padding.
+            region = canvas.crop(dx0, dy0, dst_w, dst_h)
+            tile = (alpha >= 128).ifthenelse(tile, region)
 
         canvas = canvas.insert(tile, dx0, dy0, expand=False)
 
@@ -983,7 +1030,12 @@ def _render_year(
     canvas.tiffsave(str(out_path), **tiffsave_kwargs)
 
     _ensure_georeferenced_output(out_path, target_bbox, target_width, target_height, target_srs)
-    return _mean_rgb(canvas)
+    # Average the saved raster, not the canvas: the canvas pipeline references
+    # sequential-access source tiles already consumed by tiffsave, so re-reading
+    # it would fail. Random access on the tiled output streams tiles on demand
+    # (bounded memory) instead of loading the whole raster into RAM.
+    saved = pyvips.Image.new_from_file(str(out_path), access="random")
+    return _mean_rgb(saved)
 
 
 def _render_reference_wms_year(
