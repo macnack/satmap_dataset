@@ -4,12 +4,20 @@ from typing import Any
 
 from satmap_dataset.geoportal.http import RetryPolicy, request_with_retry
 
-CATEGORY_QUERIES: dict[str, str] = {
-    "buildings": 'way["building"]',
-    "roads":     'way["highway"~"motorway|trunk|primary|secondary|tertiary|residential|service|living_street|unclassified"]',
-    "paths":     'way["highway"~"footway|cycleway|path|steps|pedestrian|track"]',
-    "green":     '(way["leisure"~"park|garden|pitch|playground|golf_course"]; way["natural"~"wood|scrub|grass|meadow"]; way["landuse"~"forest|meadow|grass|recreation_ground"];)',
-    "water":     '(way["natural"="water"]; way["waterway"];)',
+# Each category is a list of way-selectors. The bbox filter is attached to each
+# selector individually in _build_query — Overpass QL does not allow filtering a
+# parenthesized union as a whole, so multi-selector categories (green, water)
+# must apply the bbox per statement, not to the group.
+CATEGORY_QUERIES: dict[str, list[str]] = {
+    "buildings": ['way["building"]'],
+    "roads":     ['way["highway"~"motorway|trunk|primary|secondary|tertiary|residential|service|living_street|unclassified"]'],
+    "paths":     ['way["highway"~"footway|cycleway|path|steps|pedestrian|track"]'],
+    "green":     [
+        'way["leisure"~"park|garden|pitch|playground|golf_course"]',
+        'way["natural"~"wood|scrub|grass|meadow"]',
+        'way["landuse"~"forest|meadow|grass|recreation_ground"]',
+    ],
+    "water":     ['way["natural"="water"]', 'way["waterway"]'],
 }
 
 _DEFAULT_OVERPASS_URL = "https://overpass.kumi.systems/api/interpreter"
@@ -22,9 +30,11 @@ def _bbox_to_overpass(bbox_wgs84: str) -> str:
 
 
 def _build_query(category: str, bbox_overpass: str, snapshot_date: str) -> str:
-    clause = CATEGORY_QUERIES[category]
+    # Attach the bbox to each selector, then union them. Filtering the union as a
+    # group — '(a; b;)(bbox)' — is invalid Overpass QL and returns HTTP 400.
+    body = "".join(f"{sel}({bbox_overpass});" for sel in CATEGORY_QUERIES[category])
     date_tag = f'[date:"{snapshot_date}"]'
-    return f'[out:json][timeout:55]{date_tag};({clause}({bbox_overpass}););out geom;'
+    return f'[out:json][timeout:55]{date_tag};({body});out geom;'
 
 
 def _ways_to_geojson(overpass_result: dict) -> dict[str, Any]:

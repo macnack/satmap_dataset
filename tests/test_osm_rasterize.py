@@ -52,7 +52,8 @@ def test_rasterize_gdal_rasterize_args(tmp_path, monkeypatch):
             captured["cmd"] = cmd
             Path(cmd[-1]).touch()
         elif cmd[0] == "ogr2ogr":
-            Path(cmd[3]).write_text(json.dumps(SAMPLE_GEOJSON))
+            # ogr2ogr output is the reproj path at cmd[5]; cmd[3] is the -t_srs flag.
+            Path(cmd[5]).write_text(json.dumps(SAMPLE_GEOJSON))
         return MagicMock(returncode=0)
 
     monkeypatch.setattr(rasterize.subprocess, "run", _fake_run)
@@ -97,7 +98,8 @@ def test_rasterize_writes_geojson_to_temp_file(tmp_path, monkeypatch):
         if cmd[0] == "gdal_rasterize":
             Path(cmd[-1]).touch()
         elif cmd[0] == "ogr2ogr":
-            Path(cmd[3]).write_text(json.dumps(SAMPLE_GEOJSON))
+            # ogr2ogr output is the reproj path at cmd[5]; cmd[3] is the -t_srs flag.
+            Path(cmd[5]).write_text(json.dumps(SAMPLE_GEOJSON))
         return MagicMock(returncode=0)
 
     monkeypatch.setattr(rasterize.subprocess, "run", _fake_run)

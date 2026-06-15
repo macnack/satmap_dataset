@@ -21,6 +21,27 @@ def test_category_filters_all_present():
     assert set(CATEGORY_QUERIES.keys()) == {"buildings", "roads", "paths", "green", "water"}
 
 
+def test_build_query_attaches_bbox_per_selector_not_to_union():
+    # Regression: multi-selector categories (water, green) must apply the bbox to
+    # each way[...] statement. Filtering the union as a group — '(a; b;)(bbox)' —
+    # is invalid Overpass QL and returns HTTP 400.
+    from satmap_dataset.osm.overpass_client import _build_query
+
+    bbox = "52.421,16.778,52.430,16.792"
+    water = _build_query("water", bbox, "2022-04-29T00:00:00Z")
+    assert f'way["natural"="water"]({bbox});' in water
+    assert f'way["waterway"]({bbox});' in water
+    # the union itself must NOT be bbox-filtered as a whole: the bug emits ';)(<bbox>'
+    assert f";)({bbox}" not in water
+    assert water.startswith("[out:json][timeout:55]")
+    assert '[date:"2022-04-29T00:00:00Z"]' in water
+    assert water.endswith("out geom;")
+
+    # single-selector category still works
+    buildings = _build_query("buildings", bbox, "2022-04-29T00:00:00Z")
+    assert f'way["building"]({bbox});' in buildings
+
+
 def test_get_elements_geometry_builds_correct_post(monkeypatch):
     captured = {}
 
