@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import csv
+import math
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -74,3 +76,90 @@ def _load_csv(path: Path) -> list[TrackPoint]:
                 continue
             points.append(TrackPoint(lat=lat, lon=lon))
     return points
+
+
+@dataclass(frozen=True)
+class Cell:
+    ix: int
+    iy: int
+    bbox_2180: tuple[float, float, float, float]
+    bbox_wgs84: tuple[float, float, float, float]
+    center_lat: float
+    center_lon: float
+    name: str
+
+
+def _transform(src_crs: str, dst_crs: str, x: float, y: float) -> tuple[float, float]:
+    from satmap_dataset.providers.lantmateriet.crs import transform_point
+
+    try:
+        return transform_point(src_crs, dst_crs, x, y)
+    except Exception as exc:  # noqa: BLE001 - surface both backends
+        raise RuntimeError(
+            "Trajectory projection requires pyproj or the PROJ 'proj' CLI in PATH."
+        ) from exc
+
+
+def _densify(
+    x0: float, y0: float, x1: float, y1: float, step: float
+) -> Iterator[tuple[float, float]]:
+    dist = math.hypot(x1 - x0, y1 - y0)
+    n = max(1, int(dist // step) + 1)
+    for i in range(n + 1):
+        t = i / n
+        yield x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
+
+
+def _cells_from_projected(
+    projected: list[tuple[float, float]],
+    *,
+    cell_m: float,
+    origin: tuple[float, float],
+) -> list[tuple[int, int]]:
+    if cell_m <= 0:
+        raise ValueError("cell_m must be > 0")
+    ox, oy = origin
+    seen: set[tuple[int, int]] = set()
+    if len(projected) == 1:
+        segments = [(projected[0], projected[0])]
+    else:
+        segments = list(zip(projected, projected[1:]))
+    for (x0, y0), (x1, y1) in segments:
+        for x, y in _densify(x0, y0, x1, y1, cell_m / 2.0):
+            seen.add((math.floor((x - ox) / cell_m), math.floor((y - oy) / cell_m)))
+    return sorted(seen)
+
+
+def select_cells(
+    points: list[TrackPoint],
+    *,
+    cell_m: float = 1000.0,
+    origin: tuple[float, float] = (0.0, 0.0),
+    srs: str = "EPSG:2180",
+    name_stem: str = "track",
+) -> list[Cell]:
+    """Select the fixed-grid cells a track crosses (no buffer)."""
+    ox, oy = origin
+    projected = [_transform("EPSG:4326", srs, p.lon, p.lat) for p in points]
+    indices = _cells_from_projected(projected, cell_m=cell_m, origin=origin)
+    cells: list[Cell] = []
+    for ix, iy in indices:
+        xmin = ix * cell_m + ox
+        ymin = iy * cell_m + oy
+        xmax = xmin + cell_m
+        ymax = ymin + cell_m
+        clon, clat = _transform(srs, "EPSG:4326", (xmin + xmax) / 2.0, (ymin + ymax) / 2.0)
+        a_lon, a_lat = _transform(srs, "EPSG:4326", xmin, ymin)
+        b_lon, b_lat = _transform(srs, "EPSG:4326", xmax, ymax)
+        cells.append(
+            Cell(
+                ix=ix,
+                iy=iy,
+                bbox_2180=(xmin, ymin, xmax, ymax),
+                bbox_wgs84=(min(a_lon, b_lon), min(a_lat, b_lat), max(a_lon, b_lon), max(a_lat, b_lat)),
+                center_lat=clat,
+                center_lon=clon,
+                name=f"{name_stem}_x{ix}_y{iy}",
+            )
+        )
+    return cells
