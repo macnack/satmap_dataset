@@ -27,6 +27,10 @@ index-json location="poznan":
 run-location-json location_json="configs/run/locations/poznan.json" base_json="configs/run/base.json":
   loc="{{location_json}}"; loc="${loc#location_json=}"; base="{{base_json}}"; base="${base#base_json=}"; python -m satmap_dataset.cli run-location-json "$loc" --base-json "$base"
 
+# Full aligned stack (RGB + DEM + OSM) for one location, one grid.
+location-run-json location_json="configs/run/locations/poznan.json" base_json="configs/run/base.json":
+  loc="{{location_json}}"; loc="${loc#location_json=}"; base="{{base_json}}"; base="${base#base_json=}"; python -m satmap_dataset.cli location-run-json "$loc" --base-json "$base"
+
 # Index one location JSON + base JSON.
 index-location-json location_json="configs/run/locations/poznan.json" base_json="configs/run/base.json":
   loc="{{location_json}}"; loc="${loc#location_json=}"; base="{{base_json}}"; base="${base#base_json=}"; name="$(basename "$loc" .json)"; mkdir -p configs/run/generated; python scripts/merge_json_config.py --base "$base" --override "$loc" --out "configs/run/generated/${name}.run.json"; python -m satmap_dataset.cli index-json "configs/run/generated/${name}.run.json"

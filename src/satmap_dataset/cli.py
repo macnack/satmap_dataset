@@ -1167,14 +1167,23 @@ def location_run_json_command(
         "--base-json",
         help="Path to base JSON with shared run parameters.",
     ),
-    dem: bool = typer.Option(
-        True, "--dem/--no-dem", help="Produce the DEM layer aligned to the RGB grid."
+    run_dem: bool = typer.Option(
+        True,
+        "--dem/--no-dem",
+        show_default=False,
+        help="Produce the DEM layer aligned to the RGB grid (default: on).",
     ),
-    osm: bool = typer.Option(
-        True, "--osm/--no-osm", help="Produce the OSM label layer aligned to the RGB grid."
+    run_osm: bool = typer.Option(
+        True,
+        "--osm/--no-osm",
+        show_default=False,
+        help="Produce the OSM label layer aligned to the RGB grid (default: on).",
     ),
     validate: bool = typer.Option(
-        True, "--validate/--no-validate", help="Run the validator on the RGB layer manifest."
+        True,
+        "--validate/--no-validate",
+        show_default=False,
+        help="Run the validator on the RGB layer manifest (default: on).",
     ),
 ) -> None:
     """Produce the aligned RGB + DEM + OSM stack for one location in one pass.
@@ -1191,14 +1200,14 @@ def location_run_json_command(
             _build_dem_config_from_base_and_location(
                 base_json=base_json, location_json=location_json
             )
-            if dem
+            if run_dem
             else None
         )
         osm_config = (
             _build_osm_config_from_base_and_location(
                 base_json=base_json, location_json=location_json
             )
-            if osm
+            if run_osm
             else None
         )
     except typer.BadParameter as error:
@@ -1213,8 +1222,8 @@ def location_run_json_command(
         dem_config=dem_config,
         osm_config=osm_config,
         artifacts_dir=rgb_config.artifacts_dir,
-        run_dem=dem,
-        run_osm=osm,
+        run_dem=run_dem,
+        run_osm=run_osm,
         validate=validate,
     )
     _finish(exit_code, artifact_path)
