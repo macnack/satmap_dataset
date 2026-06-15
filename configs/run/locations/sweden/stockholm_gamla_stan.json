@@ -1,0 +1,18 @@
+{
+  "location_name": "Stockholm Gamla Stan",
+  "center_lat": 59.3251,
+  "center_lon": 18.0711,
+  "area_km2": 15.0,
+  "provider": "lantmateriet",
+  "mode": "stac",
+  "srs": "EPSG:3006",
+  "target_srs": "EPSG:3006",
+  "px_per_meter": 5.0,
+  "year_start": 2008,
+  "year_end": 2025,
+  "provider_options": {
+    "year_policy": "exact_only"
+  },
+  "country": "Sweden",
+  "notes": "Dense historic urban core, water and bridges; rich/hard terrain."
+}

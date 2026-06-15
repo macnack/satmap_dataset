@@ -1,0 +1,18 @@
+{
+  "location_name": "Falun",
+  "center_lat": 60.6065,
+  "center_lon": 15.6355,
+  "area_km2": 15.0,
+  "provider": "lantmateriet",
+  "mode": "stac",
+  "srs": "EPSG:3006",
+  "target_srs": "EPSG:3006",
+  "px_per_meter": 5.0,
+  "year_start": 2008,
+  "year_end": 2025,
+  "provider_options": {
+    "year_policy": "exact_only"
+  },
+  "country": "Sweden",
+  "notes": "Historic copper-mining town (Stora Kopparberget); mining/industrial change."
+}
