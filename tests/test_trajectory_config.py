@@ -20,3 +20,8 @@ def test_year_order_validated():
 def test_cell_km_positive():
     with pytest.raises(ValueError):
         TrajectoryConfig(track_path="t", output_dir="o", cell_km=0.0)
+
+
+def test_sleep_range_validated():
+    with pytest.raises(ValueError):
+        TrajectoryConfig(track_path="t", output_dir="o", sleep_min=2.0, sleep_max=1.0)

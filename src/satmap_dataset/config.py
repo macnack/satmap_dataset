@@ -651,4 +651,6 @@ class TrajectoryConfig(BaseModel):
     def _validate(self) -> "TrajectoryConfig":
         if self.year_end < self.year_start:
             raise ValueError("year_end must be >= year_start")
+        if self.sleep_max < self.sleep_min:
+            raise ValueError("sleep_max must be >= sleep_min")
         return self
