@@ -59,6 +59,20 @@ python -m satmap_dataset.cli run --year-start 2015 --year-end 2026 --bbox "21030
 
 All command examples in this README use relative paths from the repository root.
 
+### Trajectory tile downloader
+
+Select the 1 km grid windows a GPS track (`.csv` with `lat`/`lon`, or `.igc`, or a
+directory with one `.igc`) crosses in EPSG:2180, and optionally download the source
+orthophoto (2020–2025) for each window:
+
+```bash
+# manifest (trajectory_tiles.json) + GeoJSON preview only
+python -m satmap_dataset.cli trajectory --track path/to/gps_001 --out trajectory_gps001
+
+# + download each window's orthophoto into <out>/<window>/downloads/
+python -m satmap_dataset.cli trajectory --track path/to/gps_001 --out trajectory_gps001 --download
+```
+
 ## Base + Location JSON (Relative Path Examples)
 
 Index all locations:
