@@ -4,8 +4,9 @@ import json
 import logging
 from pathlib import Path
 
-from satmap_dataset.config import TrajectoryConfig
+from satmap_dataset.config import DownloadConfig, IndexConfig, TrajectoryConfig
 from satmap_dataset.models import CellEntry, TrajectoryManifest
+from satmap_dataset.pipeline import downloader, index_builder
 from satmap_dataset.trajectory import Cell, TrackPoint, load_track, select_cells
 
 logger = logging.getLogger(__name__)
@@ -121,8 +122,52 @@ def _download_cells(
     manifest: TrajectoryManifest,
     output_dir: Path,
 ) -> bool:
-    # NOTE: To update per-cell download outcomes, mutate manifest.cells[i].download_status
-    # (CellEntry is a mutable Pydantic model). Do NOT attempt to mutate `cells` entries
-    # — Cell is a frozen dataclass and has no download_status field.
-    # Implemented in Task 6.
-    return True
+    any_ok = False
+    for cell, entry in zip(cells, manifest.cells):
+        cell_dir = output_dir / cell.name
+        download_manifest = cell_dir / "dataset_manifest_download.json"
+        if download_manifest.exists() and not config.overwrite:
+            entry.download_status = "skipped"
+            any_ok = True
+            logger.info("Trajectory: skip existing cell=%s", cell.name)
+            continue
+        cell_dir.mkdir(parents=True, exist_ok=True)
+        bbox = entry.bbox
+        index_config = IndexConfig(
+            year_start=config.year_start,
+            year_end=config.year_end,
+            bbox=bbox,
+            srs=config.srs,
+            output_json=cell_dir / "index_manifest.json",
+            year_availability_output_json=cell_dir / "year_availability_report.json",
+        )
+        index_code, index_path = index_builder.run(index_config)
+        if index_code != 0:
+            entry.download_status = "failed"
+            logger.error("Trajectory: index failed cell=%s", cell.name)
+            continue
+        download_config = DownloadConfig(
+            index_manifest=index_path,
+            download_root=cell_dir / "downloads",
+            mode=config.mode,
+            profile=config.profile,
+            bbox=bbox,
+            srs=config.srs,
+            wms_fallback_missing_years=config.wms_fallback_missing_years,
+            concurrency=config.concurrency,
+            retries=config.retries,
+            retry_delay=config.retry_delay,
+            timeout=config.timeout,
+            sleep_min=config.sleep_min,
+            sleep_max=config.sleep_max,
+            overwrite=config.overwrite,
+            output_json=download_manifest,
+        )
+        download_code, _ = downloader.run(download_config)
+        if download_code != 0:
+            entry.download_status = "failed"
+            logger.error("Trajectory: download failed cell=%s", cell.name)
+            continue
+        entry.download_status = "ok"
+        any_ok = True
+    return any_ok
