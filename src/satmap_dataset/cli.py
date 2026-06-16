@@ -2080,7 +2080,7 @@ def trajectory_cmd(
             preview=preview,
         )
         code, path = trajectory_stage.run(config)
-    except (ValueError, RuntimeError) as exc:
+    except (ValueError, RuntimeError, OSError) as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(2)
     _finish(code, path)
@@ -2090,16 +2090,14 @@ def trajectory_cmd(
 def trajectory_json_cmd(
     config_json: Path = typer.Argument(..., help="JSON file mapped 1:1 onto TrajectoryConfig."),
 ) -> None:
-    import json as _json
-
     from satmap_dataset.config import TrajectoryConfig
     from satmap_dataset.pipeline import trajectory as trajectory_stage
 
-    payload = _json.loads(Path(config_json).read_text(encoding="utf-8"))
+    payload = _load_params_json_dict(config_json)
     try:
         config = TrajectoryConfig(**payload)
         code, path = trajectory_stage.run(config)
-    except (ValueError, RuntimeError) as exc:
+    except (ValueError, RuntimeError, OSError) as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(2)
     _finish(code, path)
