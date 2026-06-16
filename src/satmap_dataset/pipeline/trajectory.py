@@ -28,9 +28,11 @@ def _union_bbox(cells: list[Cell]) -> str:
 
 
 def _build_manifest(
-    config: TrajectoryConfig, points: list[TrackPoint], cells: list[Cell]
+    config: TrajectoryConfig,
+    points: list[TrackPoint],
+    cells: list[Cell],
+    cell_m: float,
 ) -> TrajectoryManifest:
-    cell_m = config.cell_km * 1000.0
     entries = [
         CellEntry(
             name=c.name,
@@ -96,21 +98,31 @@ def run(config: TrajectoryConfig) -> tuple[int, Path]:
     )
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    manifest = _build_manifest(config, points, cells)
+    manifest = _build_manifest(config, points, cells, cell_m)
     manifest_path = output_dir / "trajectory_tiles.json"
+
+    ok = True
+    if config.download:
+        ok = _download_cells(config, cells, manifest, output_dir)
+
+    # Write manifest before the optional GeoJSON sidecar so the primary artifact
+    # is always committed even if the preview write fails.
+    manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
 
     if config.preview:
         _write_geojson(output_dir / "trajectory_tiles.geojson", points, cells)
 
-    if config.download:
-        ok = _download_cells(config, cells, manifest, output_dir)
-        manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
-        return (0 if ok else 1), manifest_path
-
-    manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
-    return 0, manifest_path
+    return (0 if ok else 1), manifest_path
 
 
-def _download_cells(config, cells, manifest, output_dir) -> bool:  # noqa: ANN001
+def _download_cells(
+    config: TrajectoryConfig,
+    cells: list[Cell],
+    manifest: TrajectoryManifest,
+    output_dir: Path,
+) -> bool:
+    # NOTE: To update per-cell download outcomes, mutate manifest.cells[i].download_status
+    # (CellEntry is a mutable Pydantic model). Do NOT attempt to mutate `cells` entries
+    # — Cell is a frozen dataclass and has no download_status field.
     # Implemented in Task 6.
     return True
