@@ -96,3 +96,26 @@ def test_download_idempotent_skip(tmp_path: Path, monkeypatch):
     skipped = [c for c in manifest.cells if c.download_status == "skipped"]
     assert any(c.name == name for c in skipped)
     assert called["download"] == manifest.cell_count - len(skipped)
+
+
+def test_download_exception_marks_cell_failed_and_writes_manifest(tmp_path: Path, monkeypatch):
+    def fake_index_run(cfg):
+        out = Path(cfg.output_json)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("{}", encoding="utf-8")
+        return 0, out
+
+    def raising_download_run(cfg):
+        raise RuntimeError("network boom")
+
+    monkeypatch.setattr(traj_stage.index_builder, "run", fake_index_run)
+    monkeypatch.setattr(traj_stage.downloader, "run", raising_download_run)
+
+    out = tmp_path / "out"
+    cfg = TrajectoryConfig(track_path=_csv(tmp_path), output_dir=out, download=True)
+    code, path = traj_stage.run(cfg)
+    # run() must not raise; manifest must still be written; cell marked failed
+    assert code == 1
+    assert path.exists()
+    manifest = TrajectoryManifest.model_validate_json(path.read_text())
+    assert all(c.download_status == "failed" for c in manifest.cells)

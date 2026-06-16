@@ -133,37 +133,42 @@ def _download_cells(
             continue
         cell_dir.mkdir(parents=True, exist_ok=True)
         bbox = entry.bbox
-        index_config = IndexConfig(
-            year_start=config.year_start,
-            year_end=config.year_end,
-            bbox=bbox,
-            srs=config.srs,
-            output_json=cell_dir / "index_manifest.json",
-            year_availability_output_json=cell_dir / "year_availability_report.json",
-        )
-        index_code, index_path = index_builder.run(index_config)
-        if index_code != 0:
+        try:
+            index_config = IndexConfig(
+                year_start=config.year_start,
+                year_end=config.year_end,
+                bbox=bbox,
+                srs=config.srs,
+                output_json=cell_dir / "index_manifest.json",
+                year_availability_output_json=cell_dir / "year_availability_report.json",
+            )
+            index_code, index_path = index_builder.run(index_config)
+            if index_code != 0:
+                entry.download_status = "failed"
+                logger.error("Trajectory: index failed cell=%s", cell.name)
+                continue
+            download_config = DownloadConfig(
+                index_manifest=index_path,
+                download_root=cell_dir / "downloads",
+                mode=config.mode,
+                profile=config.profile,
+                bbox=bbox,
+                srs=config.srs,
+                wms_fallback_missing_years=config.wms_fallback_missing_years,
+                concurrency=config.concurrency,
+                retries=config.retries,
+                retry_delay=config.retry_delay,
+                timeout=config.timeout,
+                sleep_min=config.sleep_min,
+                sleep_max=config.sleep_max,
+                overwrite=config.overwrite,
+                output_json=download_manifest,
+            )
+            download_code, _ = downloader.run(download_config)
+        except Exception:  # noqa: BLE001 - one cell's failure must not abort the run
             entry.download_status = "failed"
-            logger.error("Trajectory: index failed cell=%s", cell.name)
+            logger.exception("Trajectory: cell raised, marking failed cell=%s", cell.name)
             continue
-        download_config = DownloadConfig(
-            index_manifest=index_path,
-            download_root=cell_dir / "downloads",
-            mode=config.mode,
-            profile=config.profile,
-            bbox=bbox,
-            srs=config.srs,
-            wms_fallback_missing_years=config.wms_fallback_missing_years,
-            concurrency=config.concurrency,
-            retries=config.retries,
-            retry_delay=config.retry_delay,
-            timeout=config.timeout,
-            sleep_min=config.sleep_min,
-            sleep_max=config.sleep_max,
-            overwrite=config.overwrite,
-            output_json=download_manifest,
-        )
-        download_code, _ = downloader.run(download_config)
         if download_code != 0:
             entry.download_status = "failed"
             logger.error("Trajectory: download failed cell=%s", cell.name)
