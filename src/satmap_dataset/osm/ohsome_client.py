@@ -16,18 +16,20 @@ CATEGORY_FILTERS: dict[str, str] = {
 _DEFAULT_OHSOME_URL = "https://api.ohsome.org/v1"
 
 
-def bbox_to_wgs84(bbox_str: str, srs: str) -> str:
-    """Convert a projected bbox into ohsome/Overpass WGS84 lon/lat order.
+def bbox_to_wgs84(bbox_str: str, source_srs: str = "EPSG:2180") -> str:
+    """Reproject a projected bbox to WGS84 lon_min,lat_min,lon_max,lat_max.
 
-    Returns lon_min,lat_min,lon_max,lat_max. `srs` may be any CRS pyproj can
-    resolve (EPSG:2180 for Poland, EPSG:3006 for Sweden, EPSG:3067 for Finland,
-    etc.); the source axis order is normalised via always_xy.
+    `source_srs` may be any CRS pyproj can resolve (EPSG:2180 Poland, EPSG:3006
+    Sweden, EPSG:3067 Finland, ...); axis order is normalised via always_xy.
+    All four corners are transformed and min/max taken so the result stays a
+    valid enclosing box even when the source projection is rotated relative to
+    lon/lat.
     """
     xmin, ymin, xmax, ymax = (float(x) for x in bbox_str.split(","))
-    t = Transformer.from_crs(srs, "EPSG:4326", always_xy=True)
-    lon_min, lat_min = t.transform(xmin, ymin)
-    lon_max, lat_max = t.transform(xmax, ymax)
-    return f"{lon_min:.6f},{lat_min:.6f},{lon_max:.6f},{lat_max:.6f}"
+    t = Transformer.from_crs(source_srs, "EPSG:4326", always_xy=True)
+    corners = [(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)]
+    lons, lats = zip(*(t.transform(x, y) for x, y in corners))
+    return f"{min(lons):.6f},{min(lats):.6f},{max(lons):.6f},{max(lats):.6f}"
 
 
 def bbox_epsg2180_to_wgs84(bbox_str: str) -> str:
