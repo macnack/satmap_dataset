@@ -27,6 +27,12 @@ class TileAcquisitionMetadata(BaseModel):
     gsd: float | None = None
 
 
+class YearGsdSummary(BaseModel):
+    histogram: dict[str, int] = Field(default_factory=dict)
+    finest: float | None = None
+    coarsest: float | None = None
+
+
 class ReferenceGrid(BaseModel):
     """The shared NN-ready grid every modality (RGB/DEM/OSM) aligns to.
 

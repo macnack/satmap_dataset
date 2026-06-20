@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import Any
 import random
 import logging
 
@@ -10,11 +11,43 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, T
 from satmap_dataset.config import IndexConfig
 from satmap_dataset.geoportal.http import RetryPolicy
 from satmap_dataset.geoportal.wfs_client import get_capabilities, get_year_tiles
-from satmap_dataset.models import IndexManifest, YearAvailabilityReport, YearStatus
+from satmap_dataset.models import (
+    IndexManifest,
+    YearAvailabilityReport,
+    YearGsdSummary,
+    YearStatus,
+)
 from satmap_dataset.pipeline.aoi_preview import write_aoi_preview_png, write_osm_preview_html
 from satmap_dataset.pipeline.validator import evaluate_year_policy
 
 logger = logging.getLogger("satmap_dataset.index")
+
+
+def _gsd_key(value: float) -> str:
+    # Canonical string key: trim trailing zeros but keep a compact form.
+    return f"{value:g}"
+
+
+def _summarize_gsd_by_year(
+    tile_acquisition_by_year: dict[int, dict[str, Any]],
+) -> dict[int, YearGsdSummary]:
+    summaries: dict[int, YearGsdSummary] = {}
+    for year, tiles in tile_acquisition_by_year.items():
+        histogram: dict[str, int] = {}
+        known: list[float] = []
+        for meta in tiles.values():
+            gsd = meta.gsd if hasattr(meta, "gsd") else meta.get("gsd")
+            if gsd is None:
+                continue
+            known.append(gsd)
+            key = _gsd_key(gsd)
+            histogram[key] = histogram.get(key, 0) + 1
+        summaries[year] = YearGsdSummary(
+            histogram=histogram,
+            finest=min(known) if known else None,
+            coarsest=max(known) if known else None,
+        )
+    return summaries
 
 
 def _write_json(path: Path, payload: IndexManifest | YearAvailabilityReport) -> None:
