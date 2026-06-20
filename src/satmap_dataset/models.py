@@ -24,6 +24,7 @@ class TileAcquisitionMetadata(BaseModel):
     acquisition_date: str | None = None
     publication_date: str | None = None
     acquisition_year: int | None = None
+    gsd: float | None = None
 
 
 class ReferenceGrid(BaseModel):
