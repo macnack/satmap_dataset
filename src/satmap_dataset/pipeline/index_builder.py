@@ -195,6 +195,7 @@ def run(config: IndexConfig) -> tuple[int, Path]:
     tile_sources_by_year = {year: tile_sources_full.get(year, {}) for year in policy.years_included}
     tile_bboxes_by_year = {year: tile_bboxes_full.get(year, {}) for year in policy.years_included}
     tile_acquisition_by_year = {year: tile_acquisition_full.get(year, {}) for year in policy.years_included}
+    gsd_by_year = _summarize_gsd_by_year(tile_acquisition_by_year)
     common_tile_ids: list[str] = []
     if policy.years_included:
         tile_id_sets = [set(tile_sources_by_year.get(year, {}).keys()) for year in policy.years_included]
@@ -263,6 +264,7 @@ def run(config: IndexConfig) -> tuple[int, Path]:
         tile_sources_by_year=tile_sources_by_year,
         tile_bboxes_by_year=tile_bboxes_by_year,
         tile_acquisition_by_year=tile_acquisition_by_year,
+        gsd_by_year=gsd_by_year,
         passed=policy.passed and bool(years_available_wfs),
         errors=errors,
         warnings=warnings,
@@ -281,6 +283,7 @@ def run(config: IndexConfig) -> tuple[int, Path]:
         years_available_wfs=years_available_wfs,
         years_included=policy.years_included,
         years_excluded_with_reason=years_excluded_with_reason,
+        gsd_by_year=gsd_by_year,
         strict_years=config.strict_years,
         min_years=config.min_years,
         passed=policy.passed,
