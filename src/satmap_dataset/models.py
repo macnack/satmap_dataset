@@ -108,6 +108,44 @@ class IndexManifest(BaseModel):
     provider_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class DatasetManifest(BaseModel):
+    kind: Literal["dataset_manifest"] = "dataset_manifest"
+    stage: Literal["download", "mosaic", "render", "run"] = "download"
+    generated_at: datetime = Field(default_factory=_utc_now)
+    provider: str = "geoportal"
+    years_requested: list[int] = Field(default_factory=list)
+    years_available_wfs: list[int] = Field(default_factory=list)
+    years_included: list[int] = Field(default_factory=list)
+    years_excluded_with_reason: dict[int, str] = Field(default_factory=dict)
+    common_tile_ids: list[str] = Field(default_factory=list)
+    tile_sources_by_year: dict[int, dict[str, str]] = Field(default_factory=dict)
+    tile_bboxes_by_year: dict[int, dict[str, list[float]]] = Field(default_factory=dict)
+    tile_acquisition_by_year: dict[int, dict[str, TileAcquisitionMetadata]] = Field(default_factory=dict)
+    assets: list[str] = Field(default_factory=list)
+    source_manifest: str | None = None
+    mode: Literal["wms_tiled", "wfs_render", "hybrid", "wcs", "stac"] = "hybrid"
+    target_width: int | None = None
+    target_height: int | None = None
+    target_bbox: str | None = None
+    target_srs: str | None = None
+    profile: Literal["train", "reference"] | None = None
+    px_per_meter: float | None = None
+    years_source_map: dict[int, str] = Field(default_factory=dict)
+    forced_wms_years: list[int] = Field(default_factory=list)
+    color_qc_by_year: dict[int, dict[str, float | list[float] | None]] = Field(default_factory=dict)
+    resample_method: str | None = None
+    render_backend: Literal["pyvips"] | None = None
+    asset_stats: dict[str, dict[str, int | str | None]] = Field(default_factory=dict)
+    pixel_profile: str = "RGB_U8"
+    render_cache_signature: str | None = None
+    diagnostics_report_path: str | None = None
+    diagnostics_quicklook_dir: str | None = None
+    passed: bool = True
+    notes: str | None = None
+    run_parameters: dict[str, Any] = Field(default_factory=dict)
+    provider_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class ValidationReport(BaseModel):
     kind: Literal["validation_report"] = "validation_report"
     generated_at: datetime = Field(default_factory=_utc_now)

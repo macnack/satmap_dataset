@@ -1,0 +1,16 @@
+{
+  "year_start": 2011,
+  "year_end": 2025,
+  "bbox": "381749,6676049,383749,6678049",
+  "srs": "EPSG:3067",
+  "strict_years": false,
+  "min_years": 1,
+  "provider": "nls",
+  "provider_options": {
+    "wcs_url": "https://avoin-karttakuva.maanmittauslaitos.fi/ortokuvat-ja-korkeusmallit/wcs/v2",
+    "coverage_id": "ortokuva_vari"
+  },
+  "output_json": "artifacts_sivl_area4_smoke/index_manifest.json",
+  "year_availability_output_json": "artifacts_sivl_area4_smoke/year_availability_report.json",
+  "download_root": "downloads_sivl_area4_smoke"
+}
