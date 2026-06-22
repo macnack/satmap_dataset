@@ -38,6 +38,13 @@ def test_link_mode_validated():
         RawExportConfig(**_base(link_mode="hardlink"))
 
 
+def test_cell_mode_validated():
+    assert RawExportConfig(**_base()).cell_mode == "footprint"  # default
+    assert RawExportConfig(**_base(cell_mode="world_window")).cell_mode == "world_window"
+    with pytest.raises(ValidationError):
+        RawExportConfig(**_base(cell_mode="bogus"))
+
+
 def test_min_coverage_bounds():
     assert RawExportConfig(**_base(min_coverage=0.5)).min_coverage == 0.5
     with pytest.raises(ValidationError):

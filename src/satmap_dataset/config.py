@@ -576,6 +576,7 @@ class RawExportConfig(BaseModel):
     raw_root: Path = Field(default_factory=_default_raw_root)
     min_coverage: float | None = None
     link_mode: str = "symlink"
+    cell_mode: str = "footprint"
     cell_size_m: float | None = None
     artifacts_dir: Path = Path("artifacts")
     output_json: Path = Path("artifacts/raw_export_manifest.json")
@@ -594,6 +595,13 @@ class RawExportConfig(BaseModel):
     def validate_link_mode(cls, value: str) -> str:
         if value not in {"symlink", "copy"}:
             raise ValueError("link_mode must be 'symlink' or 'copy'")
+        return value
+
+    @field_validator("cell_mode")
+    @classmethod
+    def validate_cell_mode(cls, value: str) -> str:
+        if value not in {"footprint", "world_window"}:
+            raise ValueError("cell_mode must be 'footprint' or 'world_window'")
         return value
 
     @field_validator("min_coverage")

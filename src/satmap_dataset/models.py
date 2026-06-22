@@ -365,6 +365,7 @@ class RawExportManifest(BaseModel):
     epsg: int | None = None
     epsg_provider_mismatch: bool = False
     link_mode: str = "symlink"
+    cell_mode: str = "footprint"
     min_coverage: float | None = None
     cell_size_m: list[float] | None = None
     exported_tile_counts_by_year: dict[int, int] = Field(default_factory=dict)

@@ -1954,13 +1954,14 @@ def raw_export_command(
     download_manifest: Path | None = typer.Option(None, help="Optional download manifest for provenance."),
     min_coverage: float | None = typer.Option(None, help="Override per-provider coverage gate (0,1]."),
     link_mode: str = typer.Option("symlink", help="symlink|copy for exported native tiles."),
+    cell_mode: str = typer.Option("footprint", help="footprint (verbatim) | world_window (co-register mixed-GSD years to one equal-dim stack)."),
     cell_size_m: float | None = typer.Option(None, help="Override cell size in metres."),
     artifacts_dir: Path = typer.Option(Path("artifacts"), help="Where raw_export_manifest.json is written."),
     output_json: Path | None = typer.Option(None, help="Stage artifact path."),
 ) -> None:
     payload: dict[str, object] = {
         "provider": provider, "area": area, "download_root": str(download_root),
-        "link_mode": link_mode, "artifacts_dir": str(artifacts_dir),
+        "link_mode": link_mode, "cell_mode": cell_mode, "artifacts_dir": str(artifacts_dir),
         "output_json": str(output_json) if output_json else str(artifacts_dir / "raw_export_manifest.json"),
     }
     if raw_root is not None:

@@ -14,6 +14,7 @@ import yaml
 from satmap_dataset.config import RawExportConfig
 from satmap_dataset.models import RawExportManifest
 from satmap_dataset.raw_tiles import core as rt
+from satmap_dataset.raw_tiles.world_window import ingest_area_world_window
 
 
 def _export_native_tiles(config: RawExportConfig) -> dict[int, int]:
@@ -55,6 +56,8 @@ def _can_reuse_raw_export(config: RawExportConfig, prior: RawExportManifest) -> 
         return False
     if prior.link_mode != config.link_mode:
         return False
+    if prior.cell_mode != config.cell_mode:
+        return False
     if prior.min_coverage != config.min_coverage:
         return False
     out_area = Path(config.raw_root) / config.provider / config.area
@@ -94,13 +97,20 @@ def run(config: RawExportConfig) -> tuple[int, Path]:
         print(str(output_json))
         return 1, output_json
 
-    # 2. Ingest cells via the ported core.
+    # 2. Ingest cells. 'footprint' uses the verbatim ported core; 'world_window'
+    #    co-registers mixed-GSD years to one equal-dimension stack.
     registry = rt.load_provider_registry()
     src_area = Path(config.raw_root) / config.provider / config.area
-    area_manifest = rt.ingest_area(
-        src_area, Path(config.raw_root), registry,
-        cell_size_m=config.cell_size_m, min_coverage=config.min_coverage,
-    )
+    if config.cell_mode == "world_window":
+        area_manifest = ingest_area_world_window(
+            src_area, Path(config.raw_root), registry,
+            cell_size_m=config.cell_size_m, min_coverage=config.min_coverage,
+        )
+    else:
+        area_manifest = rt.ingest_area(
+            src_area, Path(config.raw_root), registry,
+            cell_size_m=config.cell_size_m, min_coverage=config.min_coverage,
+        )
 
     # EPSG cross-check (warning only).
     epsg = area_manifest.get("epsg")
@@ -135,6 +145,7 @@ def run(config: RawExportConfig) -> tuple[int, Path]:
         epsg=epsg,
         epsg_provider_mismatch=mismatch,
         link_mode=config.link_mode,
+        cell_mode=config.cell_mode,
         min_coverage=config.min_coverage,
         cell_size_m=area_manifest.get("cell_size_m"),
         exported_tile_counts_by_year=exported,
