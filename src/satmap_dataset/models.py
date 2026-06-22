@@ -351,3 +351,30 @@ class LayerManifest(BaseModel):
                     "to regenerate it."
                 ) from exc
             raise
+
+
+class RawExportManifest(BaseModel):
+    """On-disk JSON contract for `raw_export_manifest.json` (the raw-export stage artifact)."""
+
+    kind: Literal["raw_export_manifest"] = "raw_export_manifest"
+    stage: Literal["raw_export"] = "raw_export"
+    generated_at: datetime = Field(default_factory=_utc_now)
+    provider: str
+    area: str
+    raw_root: str
+    epsg: int | None = None
+    epsg_provider_mismatch: bool = False
+    link_mode: str = "symlink"
+    min_coverage: float | None = None
+    cell_size_m: list[float] | None = None
+    exported_tile_counts_by_year: dict[int, int] = Field(default_factory=dict)
+    cells_produced: int = 0
+    seasons_kept: int = 0
+    seasons_dropped: int = 0
+    per_area_manifest_path: str | None = None
+    cell_dirs: list[str] = Field(default_factory=list)
+    source_download_manifest: str | None = None
+    passed: bool = False
+    warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    run_parameters: dict[str, Any] = Field(default_factory=dict)
