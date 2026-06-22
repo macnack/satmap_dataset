@@ -23,11 +23,14 @@ from satmap_dataset.config import (
     DownloadConfig,
     IndexConfig,
     OsmConfig,
+    RawExportConfig,
     RenderConfig,
     RunConfig,
     ValidateConfig,
+    _default_raw_root,
 )
-from satmap_dataset.pipeline import dem, dem_availability, downloader, index_builder, location_run, render, run_all, validator, osm as osm_pipeline
+from satmap_dataset.pipeline import dem, dem_availability, downloader, index_builder, location_run, raw_export, render, run_all, validator, osm as osm_pipeline
+from satmap_dataset.raw_tiles.split_manifest import build_test_manifest
 from satmap_dataset.providers import get_provider
 
 app = typer.Typer(help="satmap_dataset CLI (WFS-first pipeline)", no_args_is_help=True)
@@ -355,6 +358,26 @@ def _build_render_config_from_base_and_location(*, base_json: Path, location_jso
     merged.setdefault("dataset_manifest", str(artifacts_dir / "dataset_manifest_download.json"))
     merged.setdefault("output_json", str(artifacts_dir / "dataset_manifest_render.json"))
     return RenderConfig.model_validate(merged)
+
+
+def _build_raw_export_config_from_base_and_location(*, base_json: Path, location_json: Path) -> RawExportConfig:
+    base_payload = _load_params_json_dict(base_json)
+    location_payload = _load_params_json_dict(location_json)
+    merged: dict[str, object] = dict(base_payload)
+    merged.update(location_payload)
+    repo_root = base_json.resolve().parents[2] if len(base_json.resolve().parents) >= 3 else Path.cwd().resolve()
+    merged = _apply_location_paths_policy(merged, repo_root)
+    location_name = merged.get("location_name")
+    if location_name is None:
+        raise typer.BadParameter("location JSON must set 'location_name'")
+    merged.setdefault("area", _slugify_location_name(str(location_name)))
+    artifacts_dir = Path(str(merged.get("artifacts_dir")))
+    merged.setdefault("download_manifest", str(artifacts_dir / "dataset_manifest_download.json"))
+    merged.setdefault("output_json", str(artifacts_dir / "raw_export_manifest.json"))
+    # base.json carries many keys for other stages; keep only RawExportConfig fields.
+    allowed = set(RawExportConfig.model_fields)
+    cleaned = {k: v for k, v in merged.items() if k in allowed}
+    return RawExportConfig.model_validate(cleaned)
 
 
 def _build_dem_config_from_base_and_location(*, base_json: Path, location_json: Path) -> DemConfig:
@@ -1920,6 +1943,114 @@ def nls_run_json(config_json: Path = typer.Argument(..., exists=True)) -> None:
         raise typer.Exit(code=2) from error
     exit_code, artifact = provider.download(download_cfg)
     _finish(exit_code, artifact)
+
+
+@app.command("raw-export")
+def raw_export_command(
+    provider: str = typer.Option("geoportal", help="geoportal|lantmateriet|nls (sentinel2 rejected)."),
+    area: str = typer.Option(..., help="Area slug (output namespace under <raw_root>/<provider>/)."),
+    download_root: Path = typer.Option(..., help="downloads_<slug> root with <year>/*.tif."),
+    raw_root: Path | None = typer.Option(None, help="Shared sat_data_raw root (default: $SATMAP_RAW_ROOT or ~/Github/sat_data_raw)."),
+    download_manifest: Path | None = typer.Option(None, help="Optional download manifest for provenance."),
+    min_coverage: float | None = typer.Option(None, help="Override per-provider coverage gate (0,1]."),
+    link_mode: str = typer.Option("symlink", help="symlink|copy for exported native tiles."),
+    cell_size_m: float | None = typer.Option(None, help="Override cell size in metres."),
+    artifacts_dir: Path = typer.Option(Path("artifacts"), help="Where raw_export_manifest.json is written."),
+    output_json: Path | None = typer.Option(None, help="Stage artifact path."),
+) -> None:
+    payload: dict[str, object] = {
+        "provider": provider, "area": area, "download_root": str(download_root),
+        "link_mode": link_mode, "artifacts_dir": str(artifacts_dir),
+        "output_json": str(output_json) if output_json else str(artifacts_dir / "raw_export_manifest.json"),
+    }
+    if raw_root is not None:
+        payload["raw_root"] = str(raw_root)
+    if download_manifest is not None:
+        payload["download_manifest"] = str(download_manifest)
+    if min_coverage is not None:
+        payload["min_coverage"] = min_coverage
+    if cell_size_m is not None:
+        payload["cell_size_m"] = cell_size_m
+    try:
+        config = RawExportConfig.model_validate(payload)
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+    exit_code, artifact_path = raw_export.run(config)
+    _finish(exit_code, artifact_path)
+
+
+@app.command("raw-export-json")
+def raw_export_json_command(
+    params_json: Path = typer.Argument(..., help="JSON file with RawExportConfig fields."),
+) -> None:
+    try:
+        payload = _load_params_json_dict(params_json)
+        config = RawExportConfig.model_validate(payload)
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+    exit_code, artifact_path = raw_export.run(config)
+    _finish(exit_code, artifact_path)
+
+
+@app.command("raw-export-location-json")
+def raw_export_location_json_command(
+    location_json: Path = typer.Argument(..., help="Location JSON (location_name, center_lat, center_lon)."),
+    base_json: Path = typer.Option(Path("configs/run/base.json"), "--base-json"),
+) -> None:
+    try:
+        config = _build_raw_export_config_from_base_and_location(base_json=base_json, location_json=location_json)
+    except typer.BadParameter as error:
+        console.print(f"[red]{error}[/red]")
+        raise typer.Exit(code=2) from error
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+    exit_code, artifact_path = raw_export.run(config)
+    _finish(exit_code, artifact_path)
+
+
+@app.command("raw-export-all-location-json")
+def raw_export_all_location_json_command(
+    locations_dir: Path = typer.Option(Path("configs/run/locations"), "--locations-dir"),
+    base_json: Path = typer.Option(Path("configs/run/base.json"), "--base-json"),
+    continue_on_error: bool = typer.Option(False, "--continue-on-error"),
+) -> None:
+    location_files = sorted(locations_dir.glob("*.json"))
+    if not location_files:
+        console.print(f"[red]No location JSONs under {locations_dir}[/red]")
+        raise typer.Exit(code=2)
+    last_path: Path | None = None
+    failures = 0
+    for loc in location_files:
+        try:
+            config = _build_raw_export_config_from_base_and_location(base_json=base_json, location_json=loc)
+            exit_code, last_path = raw_export.run(config)
+            if exit_code != 0:
+                failures += 1
+                if not continue_on_error:
+                    raise typer.Exit(code=1)
+        except (typer.BadParameter, ValidationError) as error:
+            failures += 1
+            console.print(f"[red]{loc.name}: {error}[/red]")
+            if not continue_on_error:
+                raise typer.Exit(code=2) from error
+    if last_path is not None:
+        typer.echo(str(last_path))
+    raise typer.Exit(code=1 if failures else 0)
+
+
+@app.command("raw-test-manifest")
+def raw_test_manifest_command(
+    raw_root: Path | None = typer.Option(None, help="Shared sat_data_raw root (default: $SATMAP_RAW_ROOT or ~/Github/sat_data_raw)."),
+    out: Path | None = typer.Option(None, help="Output split manifest path (default: <raw_root>/test_manifest.yaml)."),
+    min_years: int = typer.Option(2, help="Minimum seasons per kept cell."),
+) -> None:
+    root = Path(raw_root) if raw_root is not None else _default_raw_root()
+    out_path = Path(out) if out is not None else root / "test_manifest.yaml"
+    build_test_manifest(root, out_path, min_years=min_years)
+    typer.echo(str(out_path.resolve()))
 
 
 def main() -> None:
