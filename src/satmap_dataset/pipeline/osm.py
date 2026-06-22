@@ -14,7 +14,7 @@ from satmap_dataset.models import (
     ReferenceGrid,
 )
 from satmap_dataset.osm import overpass_client, rasterize
-from satmap_dataset.osm.ohsome_client import bbox_epsg2180_to_wgs84
+from satmap_dataset.osm.ohsome_client import bbox_to_wgs84
 
 logger = logging.getLogger("satmap_dataset.osm")
 
@@ -126,22 +126,24 @@ async def _run_async(config: OsmConfig) -> tuple[int, Path]:
         return 1, config.output_json
 
     target_width, target_height = _read_grid(config)
-    # The Overpass query bbox is derived via bbox_epsg2180_to_wgs84, which only
-    # supports EPSG:2180; fail clearly rather than silently querying a wrong AOI.
-    if config.srs.strip().upper() != "EPSG:2180":
-        manifest = build_osm_layer_manifest(
-            config, [], bbox_wgs84="", target_width=None, target_height=None,
-            passed=False,
-            errors=[f"OSM stage only supports srs=EPSG:2180, got {config.srs!r}."],
-        )
-        config.output_json.parent.mkdir(parents=True, exist_ok=True)
-        config.output_json.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
-        return 1, config.output_json
     # Rasterize onto the authoritative grid extent: prefer the injected
     # target_bbox (the RGB ReferenceGrid bbox) over the raw AOI bbox.
     effective_bbox = config.target_bbox or config.bbox
     target_bbox = tuple(float(x) for x in effective_bbox.split(","))
-    bbox_wgs84 = bbox_epsg2180_to_wgs84(effective_bbox)
+    # The Overpass query bbox is derived for any projected CRS pyproj resolves
+    # (EPSG:2180 Poland, EPSG:3006 Sweden, EPSG:3067 Finland, ...). Fail clearly
+    # if the srs cannot be projected to WGS84 rather than querying a wrong AOI.
+    try:
+        bbox_wgs84 = bbox_to_wgs84(effective_bbox, config.srs)
+    except Exception as error:  # noqa: BLE001 - surface any pyproj/CRS failure
+        manifest = build_osm_layer_manifest(
+            config, [], bbox_wgs84="", target_width=None, target_height=None,
+            passed=False,
+            errors=[f"OSM stage cannot project srs={config.srs!r} to WGS84: {error}"],
+        )
+        config.output_json.parent.mkdir(parents=True, exist_ok=True)
+        config.output_json.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+        return 1, config.output_json
     retry_policy = RetryPolicy(
         max_attempts=config.retries, backoff_seconds=config.retry_delay
     )

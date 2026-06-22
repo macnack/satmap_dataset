@@ -111,6 +111,40 @@ def test_run_writes_rasters_and_manifest(tmp_path, monkeypatch):
             assert Path(year_asset.assets[cat]).exists()
 
 
+def test_run_accepts_epsg3006_and_converts_bbox(tmp_path, monkeypatch):
+    captured = {}
+
+    async def _spy_fetch(bbox, category, snapshot_date, **kwargs):
+        captured["bbox"] = bbox
+        return {"type": "FeatureCollection", "features": []}
+
+    monkeypatch.setattr(osm_pipeline.overpass_client, "get_elements_geometry", _spy_fetch)
+    monkeypatch.setattr(
+        osm_pipeline.rasterize, "rasterize_geojson_to_file", lambda *a, **k: None
+    )
+    render = _make_render_manifest(tmp_path, years_dates={2021: "2021-07-01"})
+    cfg = OsmConfig(
+        bbox="717646.631,7534133.478,721519.615,7538006.462",
+        srs="EPSG:3006",
+        osm_root=tmp_path / "osm_k",
+        output_json=tmp_path / "osm_k" / "osm_manifest.json",
+        render_manifest=render,
+        categories=["buildings"],
+        target_width=10,
+        target_height=10,
+        sleep_min=0.0, sleep_max=0.0,
+    )
+    code, path = osm_pipeline.run(cfg)
+    manifest = LayerManifest.model_validate_json(Path(path).read_text())
+    # The 2180-only guard must not trip for a valid Swedish CRS.
+    assert not any("only supports" in e for e in manifest.errors), manifest.errors
+    # The EPSG:3006 AOI must be converted to Kiruna WGS84 lon/lat, not left as
+    # metres or mis-projected through the old EPSG:2180 path.
+    lon_min, lat_min = (float(x) for x in captured["bbox"].split(",")[:2])
+    assert 20.1 < lon_min < 20.3, captured["bbox"]
+    assert 67.7 < lat_min < 68.0, captured["bbox"]
+
+
 def test_run_zero_features_no_raster(tmp_path, monkeypatch):
     _patch_seams(monkeypatch, features_by_cat={"buildings": 0, "roads": 0, "paths": 0, "green": 0, "water": 0})
     render = _make_render_manifest(tmp_path, years_dates={2015: "2015-06-01"})
