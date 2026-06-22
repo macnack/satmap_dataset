@@ -90,6 +90,10 @@ JSON inputs accept `center_lat`/`center_lon` plus either `square_km` or `area_km
 
 When a config has `location_name` set, `_apply_location_paths_policy` derives `download_root`, `render_root`, `artifacts_dir` from the slug (NFKD → ASCII → lowercase → non-alnum to `_` → collapse repeats). E.g. `"Poznań"` → `downloads_poznan`, `rendered_poznan`, `artifacts_poznan` under the repo root. These dirs are gitignored. `scripts/manage_location_roots.py` (exposed as `just roots-*`) walks them.
 
+### Raw-tile export (opt-in, not in `run-all`)
+
+The `raw-export` stage (`pipeline/raw_export.py`) turns native download tiles into the layout sat_roma's `raw_tile_pipeline` consumes: it lays `download_root/<year>/*.tif` into `<raw_root>/<provider>/<area>/<year>/` (symlink by default; `link_mode=copy` to materialise), then ingests co-located season-cell stacks `<raw_root>/<provider>/<area>/<cellkey>/year_YYYY.tif` (+ `.tfw`/`.prj`) with provider-aware coverage gating (geoportal `0.5`), and writes the per-area `manifest.yaml`. `raw-test-manifest` builds the cross-location split `test_manifest.yaml`. The ingestion core under `src/satmap_dataset/raw_tiles/` is a **ported copy** of sat_roma `romatch/datasets/raw_tiles.py` (drift-guarded by `tests/test_raw_tiles_core.py`); keep them in sync. `raw_root` defaults to `$SATMAP_RAW_ROOT` or `~/Github/sat_data_raw` — a single shared root, not per-location. CLI: `raw-export`, `raw-export-json`, `raw-export-location-json`, `raw-export-all-location-json`, `raw-test-manifest`; Justfile: `just raw-export-location-json`, `just raw-export-all-json`, `just raw-test-manifest`.
+
 ### External services
 
 - WFS catalog: `https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WFS/Skorowidze` (year typenames matched by regex `SkorowidzOrtof\w*?(\d{4})$`).

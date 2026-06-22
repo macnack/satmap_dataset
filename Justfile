@@ -97,3 +97,15 @@ dem-availability location_json:
 # Report availability for all locations in the default dir
 dem-availability-all:
   python -m satmap_dataset.cli dem-availability-all-location-json
+
+# Raw-tile export + ingest for a single location (opt-in; not in run-all)
+raw-export-location-json location_json="configs/run/locations/poznan.json" base_json="configs/run/base.json":
+  loc="{{location_json}}"; loc="${loc#location_json=}"; base="{{base_json}}"; base="${base#base_json=}"; python -m satmap_dataset.cli raw-export-location-json "$loc" --base-json "$base"
+
+# Raw-tile export + ingest for all locations in a dir
+raw-export-all-json locations_dir="configs/run/locations" base_json="configs/run/base.json" continue_on_error="--continue-on-error":
+  root="${SATMAP_LOCATIONS_ROOT:-./configs/run}"; dir="{{locations_dir}}"; dir="${dir#locations_dir=}"; base="{{base_json}}"; base="${base#base_json=}"; if [[ "$dir" != /* && "$dir" != */* ]]; then dir="$root/$dir"; fi; python -m satmap_dataset.cli raw-export-all-location-json --locations-dir "$dir" --base-json "$base" {{continue_on_error}}
+
+# Build the cross-location split test_manifest.yaml consumed by sat_roma
+raw-test-manifest min_years="2":
+  my="{{min_years}}"; my="${my#min_years=}"; python -m satmap_dataset.cli raw-test-manifest --min-years "$my"
