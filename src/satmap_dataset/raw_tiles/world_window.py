@@ -71,13 +71,30 @@ def common_window(chosen: dict) -> tuple:
     return (ulx, uly, w_m, h_m, res)
 
 
-def _decimation_factor(res: float, gsd: float) -> int | None:
-    """Integer downsample factor coarse_res/gsd, or None if not (near-)integer."""
-    f = res / gsd
-    fi = round(f)
-    if fi >= 1 and abs(f - fi) < 1e-6:
-        return fi
-    return None
+def _equalize_to_grid(img: "pyvips.Image", gsd: float, res: float, tw: int, th: int) -> tuple:
+    """Resample a native-GSD crop to the coarse target grid at exactly (tw, th).
+
+    Integer ratio (res/gsd) -> exact box-average decimation (no interpolation;
+    Geoportal 0.05->0.25 = 5x). Non-integer ratio -> anti-aliased Lanczos
+    downscale to the coarsest GSD (Lantmäteriet 0.16->0.25 = 1.5625x). Equal GSD
+    -> identity. Returns ``(out_img, method)`` with method in
+    {"native", "decimate", "resize"}.
+    """
+    factor = res / gsd
+    fi = round(factor)
+    if abs(factor - 1.0) < 1e-9:
+        out, method = img, "native"
+    elif fi >= 2 and abs(factor - fi) < 1e-6:
+        out, method = img.shrink(fi, fi), "decimate"  # exact integer box average
+    else:
+        out = img.resize(tw / img.width, kernel="lanczos3", vscale=th / img.height)
+        method = "resize"
+    # Guard against ±1 px rounding so every year lands on identical dims.
+    if out.width != tw or out.height != th:
+        out = out.crop(0, 0, min(out.width, tw), min(out.height, th))
+        if out.width != tw or out.height != th:
+            out = out.embed(0, 0, tw, th, extend="copy")
+    return out, method
 
 
 def ingest_area_world_window(src_area: Path, out_root: Path, registry: dict, *,
@@ -123,21 +140,16 @@ def ingest_area_world_window(src_area: Path, out_root: Path, registry: dict, *,
         if win is None:
             continue
         ulx, uly, w_m, h_m, res = win
+        tw, th = round(w_m / res), round(h_m / res)  # shared equal-dim target
         loc_dir = out_area / key
         coarse_gt = GeoTransform(ulx, res, 0.0, uly, 0.0, -res)
         seasons = []
         for year, t in sorted(chosen.items()):
             x, y, w, h = world_window_to_pixel(t.gt, ulx, uly, w_m, h_m)
-            factor = _decimation_factor(res, t.gt.xres)
             # Random access (not sequential): tiffsave(pyramid=True) makes multiple
             # passes over the region to build overviews; real source tiles are tiled.
             img = pyvips.Image.new_from_file(str(t.path)).crop(x, y, w, h)
-            if factor is not None and factor > 1:
-                out_img = img.shrink(factor, factor)  # exact box average (integer decimation)
-                eff_res = res
-            else:
-                out_img = img
-                eff_res = t.gt.xres  # coarse year (factor 1) or non-integer ratio -> native
+            out_img, method = _equalize_to_grid(img, t.gt.xres, res, tw, th)
             cov = valid_pixel_fraction(out_img)
             if cov < mc:
                 seasons.append({"year": year, "dropped": True, "coverage": round(cov, 4),
@@ -146,13 +158,12 @@ def ingest_area_world_window(src_area: Path, out_root: Path, registry: dict, *,
             loc_dir.mkdir(parents=True, exist_ok=True)
             out_tif = loc_dir / f"year_{year}.tif"
             out_img.tiffsave(str(out_tif), compression="lzw", tile=True, pyramid=True, bigtiff=True)
-            season_gt = coarse_gt if eff_res == res else GeoTransform(ulx, t.gt.xres, 0.0, uly, 0.0, -t.gt.xres)
-            write_tfw(season_gt, loc_dir / f"year_{year}.tfw")
+            write_tfw(coarse_gt, loc_dir / f"year_{year}.tfw")
             write_prj_wkt(t.wkt, loc_dir / f"year_{year}.prj")
-            seasons.append({"year": year, "window_gsd": round(eff_res, 6), "native_gsd": t.gsd,
+            seasons.append({"year": year, "window_gsd": round(res, 6), "native_gsd": t.gsd,
                             "coverage": round(cov, 4), "source": t.path.name,
                             "dims": [out_img.width, out_img.height],
-                            "downsampled": eff_res != t.gt.xres})
+                            "downsampled": method != "native", "resample": method})
         if any(not s.get("dropped") for s in seasons):
             manifest["locations"][key] = {
                 "alias": None,

@@ -61,14 +61,14 @@ _WKT_2180 = (
 )
 
 
-def _write_geotiff(path: Path, ulx, uly, gsd, n):
+def _write_geotiff(path: Path, ulx, uly, gsd, n, epsg=2180):
     path.parent.mkdir(parents=True, exist_ok=True)
     arr = np.full((n, n, 3), 200, np.uint8)
     img = pyvips.Image.new_from_memory(arr.tobytes(), n, n, 3, "uchar")
     tmp = path.with_suffix(".untagged.tif")
     img.tiffsave(str(tmp))
     lrx, lry = ulx + n * gsd, uly - n * gsd
-    subprocess.run(["gdal_translate", "-q", "-a_srs", "EPSG:2180",
+    subprocess.run(["gdal_translate", "-q", "-a_srs", f"EPSG:{epsg}",
                     "-a_ullr", str(ulx), str(uly), str(lrx), str(lry), str(tmp), str(path)], check=True)
     tmp.unlink()
 
@@ -106,3 +106,31 @@ def test_world_window_ingest_equalizes_dims(tmp_path):
     assert len(sizes) == 1, sizes
     for y in (2018, 2020, 2021):
         assert (cell / f"year_{y}.tfw").exists() and (cell / f"year_{y}.prj").exists()
+
+
+@pytest.mark.skipif(not _has_gdal(), reason="GDAL CLI required")
+def test_world_window_non_integer_gsd_resamples(tmp_path):
+    # Luleå case: aligned origins, 0.25 m and 0.16 m years (ratio 1.5625, non-integer).
+    # Footprint 40 m -> 160 px @0.25 m, 250 px @0.16 m (both integer, same origin).
+    src = tmp_path / "lantmateriet" / "lulea_mix"
+    _write_geotiff(src / "2015" / "a.tif", 825000.0, 7292500.0, 0.25, 160, epsg=3006)
+    _write_geotiff(src / "2019" / "b.tif", 825000.0, 7292500.0, 0.16, 250, epsg=3006)
+
+    out_root = tmp_path / "out"
+    reg = load_provider_registry()
+    manifest = ingest_area_world_window(src, out_root, reg)
+
+    assert manifest["provider"] == "lantmateriet" and manifest["epsg"] == 3006
+    (key, loc), = manifest["locations"].items()
+    seasons = {s["year"]: s for s in loc["seasons"] if not s.get("dropped")}
+    assert set(seasons) == {2015, 2019}
+    # equalized to the coarsest (0.25 m) grid -> identical dims, via interpolation for 0.16 m
+    assert loc["window_gsd"] == 0.25
+    assert seasons[2015]["resample"] == "native"
+    assert seasons[2019]["resample"] == "resize"  # non-integer -> Lanczos downscale
+    dims = {tuple(s["dims"]) for s in seasons.values()}
+    assert dims == {(160, 160)}
+    cell = out_root / "lantmateriet" / "lulea_mix" / key
+    sizes = {(pyvips.Image.new_from_file(str(cell / f"year_{y}.tif")).width,
+              pyvips.Image.new_from_file(str(cell / f"year_{y}.tif")).height) for y in (2015, 2019)}
+    assert sizes == {(160, 160)}
