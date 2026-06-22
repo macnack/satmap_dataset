@@ -20,6 +20,7 @@ dependencies = [
   "pyvips",
   "tifffile",
   "imagecodecs",
+  "PyYAML",
 ]
 
 [project.optional-dependencies]
@@ -37,6 +38,9 @@ package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"satmap_dataset.raw_tiles" = ["*.yaml"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

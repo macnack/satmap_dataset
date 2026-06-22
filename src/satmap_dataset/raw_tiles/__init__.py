@@ -1,0 +1,38 @@
+"""Self-contained raw-tile ingestion core (ported from sat_roma)."""
+from satmap_dataset.raw_tiles.core import (
+    Cell,
+    GeoTransform,
+    TileInfo,
+    cell_key,
+    derive_cell_grid,
+    detect_year,
+    geotransform_to_tfw_lines,
+    ingest_area,
+    load_provider_registry,
+    min_coverage_for_epsg,
+    provider_for_epsg,
+    read_tile_info,
+    resolve_season_tile,
+    valid_pixel_fraction,
+    write_prj_wkt,
+    write_tfw,
+)
+
+__all__ = [
+    "Cell",
+    "GeoTransform",
+    "TileInfo",
+    "cell_key",
+    "derive_cell_grid",
+    "detect_year",
+    "geotransform_to_tfw_lines",
+    "ingest_area",
+    "load_provider_registry",
+    "min_coverage_for_epsg",
+    "provider_for_epsg",
+    "read_tile_info",
+    "resolve_season_tile",
+    "valid_pixel_fraction",
+    "write_prj_wkt",
+    "write_tfw",
+]
