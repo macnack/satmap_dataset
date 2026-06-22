@@ -99,12 +99,19 @@ def _equalize_to_grid(img: "pyvips.Image", gsd: float, res: float, tw: int, th: 
 
 def ingest_area_world_window(src_area: Path, out_root: Path, registry: dict, *,
                              cell_size_m: "float | None" = None,
-                             min_coverage: "float | None" = None) -> dict:
-    """Mixed-GSD-aware ingest. Writes co-registered, equal-dimension season
-    stacks ``<out_root>/<provider>/<area>/<cellkey>/year_YYYY.tif`` (+ tfw/prj),
-    every year resampled (finer years only, by exact integer decimation) to the
-    coarsest GSD of its spot. Returns a manifest dict shaped like
-    `core.ingest_area`'s, with extra per-season `native_gsd`/`window_gsd`/`dims`.
+                             min_coverage: "float | None" = None,
+                             equalize_gsd: bool = True) -> dict:
+    """Mixed-GSD-aware ingest. Writes co-registered season stacks
+    ``<out_root>/<provider>/<area>/<cellkey>/year_YYYY.tif`` (+ tfw/prj).
+
+    Every year is cropped to the same geographic window (intersection of all
+    years' footprints snapped to the coarsest grid). With ``equalize_gsd=True``
+    (default) each year is also resampled to that coarse GSD so the stack is
+    equal-dimension; with ``equalize_gsd=False`` each year keeps its **native
+    GSD** (raw, fully lossless — only the integer-pixel window crop, no
+    resampling), so years remain co-registered geographically but differ in
+    pixel dimensions. Returns a manifest dict shaped like `core.ingest_area`'s,
+    with extra per-season `native_gsd`/`window_gsd`/`dims`/`resample`.
     """
     tiles = [read_tile_info(p) for p in sorted(src_area.glob("*/*.tif"))
              if _YEAR_DIR_RE.match(p.parent.name)]
@@ -149,7 +156,14 @@ def ingest_area_world_window(src_area: Path, out_root: Path, registry: dict, *,
             # Random access (not sequential): tiffsave(pyramid=True) makes multiple
             # passes over the region to build overviews; real source tiles are tiled.
             img = pyvips.Image.new_from_file(str(t.path)).crop(x, y, w, h)
-            out_img, method = _equalize_to_grid(img, t.gt.xres, res, tw, th)
+            if equalize_gsd:
+                out_img, method = _equalize_to_grid(img, t.gt.xres, res, tw, th)
+                season_gt, eff_res = coarse_gt, res
+            else:
+                # Raw native GSD: keep the lossless window crop as-is, own georef.
+                out_img, method = img, "native"
+                season_gt = GeoTransform(ulx, t.gt.xres, 0.0, uly, 0.0, -t.gt.xres)
+                eff_res = t.gt.xres
             cov = valid_pixel_fraction(out_img)
             if cov < mc:
                 seasons.append({"year": year, "dropped": True, "coverage": round(cov, 4),
@@ -158,9 +172,9 @@ def ingest_area_world_window(src_area: Path, out_root: Path, registry: dict, *,
             loc_dir.mkdir(parents=True, exist_ok=True)
             out_tif = loc_dir / f"year_{year}.tif"
             out_img.tiffsave(str(out_tif), compression="lzw", tile=True, pyramid=True, bigtiff=True)
-            write_tfw(coarse_gt, loc_dir / f"year_{year}.tfw")
+            write_tfw(season_gt, loc_dir / f"year_{year}.tfw")
             write_prj_wkt(t.wkt, loc_dir / f"year_{year}.prj")
-            seasons.append({"year": year, "window_gsd": round(res, 6), "native_gsd": t.gsd,
+            seasons.append({"year": year, "window_gsd": round(eff_res, 6), "native_gsd": t.gsd,
                             "coverage": round(cov, 4), "source": t.path.name,
                             "dims": [out_img.width, out_img.height],
                             "downsampled": method != "native", "resample": method})

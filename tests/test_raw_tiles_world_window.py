@@ -109,6 +109,35 @@ def test_world_window_ingest_equalizes_dims(tmp_path):
 
 
 @pytest.mark.skipif(not _has_gdal(), reason="GDAL CLI required")
+def test_world_window_raw_gsd_keeps_native_dims(tmp_path):
+    # equalize_gsd=False: co-register to the same spot but keep native GSD (lossless,
+    # no resampling) -> years differ in pixel dims but share geographic extent.
+    src = tmp_path / "geoportal" / "poznan_raw"
+    _write_geotiff(src / "2018" / "a.tif", 1000.0, 2000.0, 0.25, 800)
+    _write_geotiff(src / "2021" / "c.tif", 1000.05, 1999.85, 0.05, 4000)
+
+    out_root = tmp_path / "out"
+    manifest = ingest_area_world_window(src, out_root, load_provider_registry(), equalize_gsd=False)
+    (key, loc), = manifest["locations"].items()
+    seasons = {s["year"]: s for s in loc["seasons"] if not s.get("dropped")}
+    assert seasons[2018]["resample"] == "native" and seasons[2021]["resample"] == "native"
+    assert seasons[2018]["window_gsd"] == 0.25 and seasons[2021]["window_gsd"] == 0.05
+    # native GSD preserved -> the 0.05 m year has 5x the pixels of the 0.25 m year
+    d18 = tuple(seasons[2018]["dims"])
+    d21 = tuple(seasons[2021]["dims"])
+    assert d21[0] == d18[0] * 5 and d21[1] == d18[1] * 5
+    # but geographically co-registered: same window origin in both .tfw (col 5/6)
+    cell = out_root / "geoportal" / "poznan_raw" / key
+    origins = set()
+    for y in (2018, 2021):
+        vals = [float(v) for v in (cell / f"year_{y}.tfw").read_text().splitlines()]
+        # tfw c/f are pixel-CENTRE; back out the corner using each year's own gsd
+        gsd = abs(vals[0])
+        origins.add((round(vals[4] - gsd / 2, 3), round(vals[5] + gsd / 2, 3)))
+    assert len(origins) == 1, origins
+
+
+@pytest.mark.skipif(not _has_gdal(), reason="GDAL CLI required")
 def test_world_window_non_integer_gsd_resamples(tmp_path):
     # Luleå case: aligned origins, 0.25 m and 0.16 m years (ratio 1.5625, non-integer).
     # Footprint 40 m -> 160 px @0.25 m, 250 px @0.16 m (both integer, same origin).

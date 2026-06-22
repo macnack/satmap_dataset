@@ -58,6 +58,8 @@ def _can_reuse_raw_export(config: RawExportConfig, prior: RawExportManifest) -> 
         return False
     if prior.cell_mode != config.cell_mode:
         return False
+    if prior.run_parameters.get("equalize_gsd") != config.equalize_gsd:
+        return False
     if prior.min_coverage != config.min_coverage:
         return False
     out_area = Path(config.raw_root) / config.provider / config.area
@@ -105,6 +107,7 @@ def run(config: RawExportConfig) -> tuple[int, Path]:
         area_manifest = ingest_area_world_window(
             src_area, Path(config.raw_root), registry,
             cell_size_m=config.cell_size_m, min_coverage=config.min_coverage,
+            equalize_gsd=config.equalize_gsd,
         )
     else:
         area_manifest = rt.ingest_area(
@@ -158,7 +161,8 @@ def run(config: RawExportConfig) -> tuple[int, Path]:
         passed=True,
         warnings=warnings,
         errors=errors,
-        run_parameters={"download_root": str(config.download_root)},
+        run_parameters={"download_root": str(config.download_root),
+                        "equalize_gsd": config.equalize_gsd},
     )
     output_json.write_text(manifest.model_dump_json(indent=2))
     print(str(output_json))

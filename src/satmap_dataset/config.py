@@ -577,6 +577,7 @@ class RawExportConfig(BaseModel):
     min_coverage: float | None = None
     link_mode: str = "symlink"
     cell_mode: str = "footprint"
+    equalize_gsd: bool = True
     cell_size_m: float | None = None
     artifacts_dir: Path = Path("artifacts")
     output_json: Path = Path("artifacts/raw_export_manifest.json")
