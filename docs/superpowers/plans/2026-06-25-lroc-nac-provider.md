@@ -120,7 +120,7 @@ def test_build_query_url_has_required_params() -> None:
     for fragment in (
         "query=product", "target=moon", "ihid=LRO", "iid=LROC",
         "pt=CDRNAC4", "westernlon=30.6", "easternlon=30.9",
-        "minlat=20.0", "maxlat=20.35", "loc=f",
+        "minlat=20", "maxlat=20.35", "loc=f",
         "minobtime=2009-01-01", "maxobtime=2026-12-31",
         "results=opmf", "output=JSON",
     ):
@@ -450,10 +450,11 @@ from satmap_dataset.providers.lroc_nac.crs import normalize_bbox_to_ode
 
 def test_geographic_bbox_passthrough_reorders_to_ode() -> None:
     # bbox is xmin,ymin,xmax,ymax = westlon,minlat,eastlon,maxlat
+    # ODE order is (westlon, eastlon, minlat, maxlat) = (xmin, xmax, ymin, ymax)
     west, east, minlat, maxlat = normalize_bbox_to_ode(
         "30.60,20.00,30.90,20.35", "IAU_2015:30100"
     )
-    assert (west, east, minlat, maxlat) == (30.60, 20.00, 30.90, 20.35)
+    assert (west, east, minlat, maxlat) == (30.60, 30.90, 20.00, 20.35)
 
 
 def test_rejects_non_lunar_crs() -> None:
@@ -896,6 +897,16 @@ Replace the `_index_async` stub:
                     publication_date=None,
                     acquisition_year=year,
                 )
+            if not sources:
+                # Products grouped under this year but none had a downloadable
+                # file_url — mirror the lantmateriet guard so the year is
+                # excluded rather than entering years_included empty.
+                year_statuses.append(
+                    YearStatus(year=year, typename_exists=True, feature_count=0,
+                               status="zero_features", reason="no_downloadable_asset")
+                )
+                years_excluded[year] = "no_downloadable_asset"
+                continue
             tile_sources_by_year[year] = sources
             if bboxes:
                 tile_bboxes_by_year[year] = bboxes
@@ -998,6 +1009,7 @@ Pulls each `(year, pdsid, url)` to `download_root/<year>/<pdsid><ext>` using the
 
 **Files:**
 - Modify: `src/satmap_dataset/providers/lroc_nac/provider.py`
+- Modify: `src/satmap_dataset/models.py` (add `"ode"` to the `LayerManifest.mode` Literal — accurate provenance for the ODE catalog source, mirroring how `"wcs"` was added)
 - Test: `tests/test_lroc_nac_download.py`
 
 **Interfaces:**

@@ -57,12 +57,14 @@ async def _download_asset_with_retry(
                         await handle.write(chunk)
             return True
         except httpx.HTTPStatusError as exc:
+            logger.warning("LROC NAC download attempt=%s status=%s url=%s", attempt, exc.response.status_code, url)
             if exc.response.status_code in _NON_RETRYABLE_STATUSES:
                 return False
             if attempt >= attempts:
                 return False
             await asyncio.sleep(retry_delay * (2 ** (attempt - 1)))
-        except (httpx.HTTPError, OSError):
+        except (httpx.HTTPError, OSError) as exc:
+            logger.warning("LROC NAC download attempt=%s failed: %s", attempt, exc)
             if attempt >= attempts:
                 return False
             await asyncio.sleep(retry_delay * (2 ** (attempt - 1)))
