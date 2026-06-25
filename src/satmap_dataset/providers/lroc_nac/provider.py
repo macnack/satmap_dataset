@@ -103,6 +103,13 @@ class LrocNacProvider(Provider):
                     publication_date=None,
                     acquisition_year=year,
                 )
+            if not sources:
+                year_statuses.append(
+                    YearStatus(year=year, typename_exists=True, feature_count=0,
+                               status="zero_features", reason="no_downloadable_asset")
+                )
+                years_excluded[year] = "no_downloadable_asset"
+                continue
             tile_sources_by_year[year] = sources
             if bboxes:
                 tile_bboxes_by_year[year] = bboxes

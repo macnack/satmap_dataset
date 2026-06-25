@@ -49,6 +49,38 @@ def test_index_builds_multitemporal_manifest(tmp_path, monkeypatch) -> None:
     assert avail.exists()
 
 
+def test_year_with_all_none_file_urls_is_excluded(tmp_path, monkeypatch) -> None:
+    """Products with file_url=None are filtered by group_products_by_year before reaching
+    _index_async's inner loop, so a year whose only products have no downloadable asset is
+    absent from grouped entirely and lands in years_excluded as 'no_nac_observation'.
+    The defensive 'if not sources:' guard (matching lantmateriet) is unreachable via this
+    path — this test pins the actual observable behavior."""
+    async def fake_search(options, **kwargs):
+        # 2009: one product with no downloadable file (file_url=None).
+        # group_products_by_year filters it out → year absent from grouped.
+        return [
+            OdeProduct("M101013931LC", "2009-09-15T12:00:00", 2009, 42.5, 1.2, 0.5,
+                       (30.60, 20.05, 30.72, 20.30), None, None),
+        ]
+
+    monkeypatch.setattr(lroc_provider.ode, "search_products", fake_search)
+
+    cfg = IndexConfig(
+        year_start=2009, year_end=2009,
+        bbox="30.6,20.0,30.9,20.35", srs="IAU_2015:30100",
+        provider="lroc_nac", min_years=1,
+        output_json=tmp_path / "index.json",
+        year_availability_output_json=tmp_path / "avail.json",
+    )
+    code, path = lroc_provider.LrocNacProvider().index(cfg)
+
+    manifest = json.loads(path.read_text())
+    assert 2009 not in manifest["years_included"]
+    assert manifest["years_excluded_with_reason"].get("2009") == "no_nac_observation"
+    # Policy fails: no years included but min_years=1
+    assert code == 1
+
+
 def test_index_fails_when_below_min_years(tmp_path, monkeypatch) -> None:
     async def fake_search(options, **kwargs):
         return _products()[:1]  # only 2009
