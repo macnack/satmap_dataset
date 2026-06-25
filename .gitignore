@@ -3,6 +3,7 @@ rendered*/
 download*/
 dem_*/
 osm_*/
+.superpowers/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
