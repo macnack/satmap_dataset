@@ -97,6 +97,20 @@ When a config has `location_name` set, `_apply_location_paths_policy` derives `d
 
 Geoportal is rate-sensitive even for sequential calls. Every request goes through `geoportal/http.py` with a `RetryPolicy` and a randomized pre-request sleep (`sleep_min`/`sleep_max`, defaults `0.6`–`2.2 s`). Don't remove the jitter or batch requests aggressively without testing against a real run.
 
+### LROC NAC provider (Moon, multi-temporal)
+
+`provider="lroc_nac"` sources multi-temporal lunar LROC NAC observations from
+the PDS Orbital Data Explorer (ODE) REST API
+(`https://oderest.rsl.wustl.edu/live2`). Requires a lunar CRS
+(`srs="IAU_2015:30100"`, ocentric lon/lat degrees). `index` enumerates every
+overlapping NAC observation across the bbox + year range (each `pdsid` a
+distinct tile under its acquisition year — the multi-temporal axis);
+`download` pulls the PDS frames. `provider_options`: `product_type`
+(default `CDRNAC4`), `page_limit`, `max_pages`, `max_incidence_angle`,
+`min_obtime`/`max_obtime`. Downloaded frames are unprojected camera-geometry
+rasters — ISIS `cam2map` projection and render are a separate, deferred stage.
+Sample configs: `configs/run/lroc_nac_apollo17.{index,download}.json`.
+
 ### Profiles and modes
 
 - `mode`: `wfs_render` (WFS only), `wms_tiled` (WMS only — index step is stubbed via `_write_wms_only_index`), `hybrid` (default; WFS-first, WMS for missing years).

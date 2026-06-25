@@ -1,0 +1,10 @@
+{
+  "index_manifest": "artifacts_lroc_nac_apollo17/index_manifest.json",
+  "download_root": "downloads_lroc_nac_apollo17",
+  "srs": "IAU_2015:30100",
+  "bbox": "30.60,20.00,30.90,20.35",
+  "provider": "lroc_nac",
+  "wms_fallback_missing_years": false,
+  "concurrency": 4,
+  "output_json": "artifacts_lroc_nac_apollo17/dataset_manifest_download.json"
+}
