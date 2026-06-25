@@ -10,12 +10,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
+
+import aiofiles
+import httpx
 
 from satmap_dataset.config import DownloadConfig, IndexConfig
 from satmap_dataset.models import (
     IndexManifest,
+    LayerManifest,
     TileAcquisitionMetadata,
     YearAvailabilityReport,
     YearStatus,
@@ -25,6 +31,47 @@ from satmap_dataset.providers.base import Provider
 from satmap_dataset.providers.lroc_nac import crs, ode
 
 logger = logging.getLogger("satmap_dataset.lroc_nac")
+
+_NON_RETRYABLE_STATUSES = frozenset({400, 401, 403, 404, 410})
+
+
+async def _download_asset_with_retry(
+    client: httpx.AsyncClient,
+    url: str,
+    output_path: Path,
+    *,
+    retries: int,
+    retry_delay: float,
+    sleep_min: float,
+    sleep_max: float,
+) -> bool:
+    attempts = retries + 1
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    for attempt in range(1, attempts + 1):
+        await asyncio.sleep(random.uniform(sleep_min, sleep_max))
+        try:
+            async with client.stream("GET", url) as response:
+                response.raise_for_status()
+                async with aiofiles.open(output_path, "wb") as handle:
+                    async for chunk in response.aiter_bytes():
+                        await handle.write(chunk)
+            return True
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in _NON_RETRYABLE_STATUSES:
+                return False
+            if attempt >= attempts:
+                return False
+            await asyncio.sleep(retry_delay * (2 ** (attempt - 1)))
+        except (httpx.HTTPError, OSError):
+            if attempt >= attempts:
+                return False
+            await asyncio.sleep(retry_delay * (2 ** (attempt - 1)))
+    return False
+
+
+def _ext_for_url(url: str) -> str:
+    suffix = Path(urlparse(url).path).suffix
+    return suffix or ".IMG"
 
 DEFAULT_TARGET_SRS = "IAU_2015:30100"
 
@@ -195,4 +242,101 @@ class LrocNacProvider(Provider):
         return asyncio.run(self._download_async(config))
 
     async def _download_async(self, config: DownloadConfig) -> tuple[int, Path]:
-        raise NotImplementedError("Implemented in Task 5")
+        index_manifest = IndexManifest.model_validate_json(
+            config.index_manifest.read_text(encoding="utf-8")
+        )
+        jobs: list[tuple[int, str, str, Path]] = []
+        for year in index_manifest.years_included:
+            for pdsid, url in index_manifest.tile_sources_by_year.get(year, {}).items():
+                output_path = config.download_root / str(year) / f"{pdsid}{_ext_for_url(url)}"
+                jobs.append((year, pdsid, url, output_path))
+
+        assets: list[str] = []
+        failed: list[str] = []
+        years_source_map: dict[int, str] = {}
+
+        timeout = httpx.Timeout(timeout=config.timeout, connect=min(config.timeout, 20.0))
+        limits = httpx.Limits(
+            max_connections=config.concurrency, max_keepalive_connections=config.concurrency
+        )
+        headers = {"User-Agent": "satmap_dataset/0.1"}
+
+        if jobs:
+            queue: asyncio.Queue[tuple[int, str, str, Path] | None] = asyncio.Queue()
+            for job in jobs:
+                queue.put_nowait(job)
+            lock = asyncio.Lock()
+
+            async def worker() -> None:
+                async with httpx.AsyncClient(
+                    follow_redirects=True, timeout=timeout, limits=limits, headers=headers
+                ) as client:
+                    while True:
+                        item = await queue.get()
+                        if item is None:
+                            queue.task_done()
+                            return
+                        year, _pdsid, url, output_path = item
+                        ok = (
+                            output_path.exists()
+                            and output_path.stat().st_size > 0
+                            and not config.overwrite
+                        )
+                        if not ok:
+                            ok = await _download_asset_with_retry(
+                                client, url, output_path,
+                                retries=config.retries, retry_delay=config.retry_delay,
+                                sleep_min=config.sleep_min, sleep_max=config.sleep_max,
+                            )
+                        async with lock:
+                            if ok:
+                                assets.append(str(output_path))
+                                years_source_map[year] = "ode"
+                            else:
+                                failed.append(url)
+                        queue.task_done()
+
+            workers = [asyncio.create_task(worker()) for _ in range(max(1, config.concurrency))]
+            await queue.join()
+            for _ in workers:
+                queue.put_nowait(None)
+            await asyncio.gather(*workers)
+
+        years_included_effective = sorted(years_source_map.keys())
+        manifest = LayerManifest(
+            layer="lroc_nac_mono",
+            role="rgb",
+            stage="download",
+            provider="lroc_nac",
+            years_requested=index_manifest.years_requested,
+            years_available_wfs=index_manifest.years_available_wfs,
+            years_included=years_included_effective,
+            years_excluded_with_reason=index_manifest.years_excluded_with_reason,
+            common_tile_ids=index_manifest.common_tile_ids,
+            tile_sources_by_year=index_manifest.tile_sources_by_year,
+            tile_bboxes_by_year=index_manifest.tile_bboxes_by_year,
+            tile_acquisition_by_year=index_manifest.tile_acquisition_by_year,
+            assets=sorted(set(assets)),
+            source_manifest=str(config.index_manifest),
+            mode="stac",
+            target_bbox=config.bbox,
+            target_srs=config.srs,
+            profile=config.profile,
+            px_per_meter=config.px_per_meter,
+            years_source_map=years_source_map,
+            forced_wms_years=[],
+            passed=bool(assets) and not failed,
+            notes=(
+                f"provider=lroc_nac downloaded={len(assets)} failed={len(failed)} "
+                f"years_included={years_included_effective}"
+            ),
+            run_parameters=config.model_dump(mode="json"),
+            provider_metadata={"failed_urls": failed},
+        )
+        config.output_json.parent.mkdir(parents=True, exist_ok=True)
+        config.output_json.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+        logger.info(
+            "LROC NAC download: assets=%s failed=%s passed=%s",
+            len(assets), len(failed), manifest.passed,
+        )
+        return (0 if manifest.passed else 1), config.output_json
