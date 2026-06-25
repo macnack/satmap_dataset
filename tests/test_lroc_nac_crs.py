@@ -12,11 +12,11 @@ from satmap_dataset.providers.lroc_nac.crs import normalize_bbox_to_ode
 
 
 def test_geographic_bbox_passthrough_reorders_to_ode() -> None:
-    # bbox is xmin,ymin,xmax,ymax = westlon,minlat,eastlon,maxlat
+    # ODE order is (westlon, eastlon, minlat, maxlat) = (xmin, xmax, ymin, ymax)
     west, east, minlat, maxlat = normalize_bbox_to_ode(
         "30.60,20.00,30.90,20.35", "IAU_2015:30100"
     )
-    assert (west, east, minlat, maxlat) == (30.60, 20.00, 30.90, 20.35)
+    assert (west, east, minlat, maxlat) == (30.60, 30.90, 20.00, 20.35)
 
 
 def test_rejects_non_lunar_crs() -> None:

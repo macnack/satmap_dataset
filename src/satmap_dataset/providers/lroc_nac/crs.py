@@ -26,7 +26,7 @@ def normalize_bbox_to_ode(bbox: str, srs: str) -> tuple[float, float, float, flo
         raise ValueError("bbox must have format xmin,ymin,xmax,ymax")
     xmin, ymin, xmax, ymax = parts
     if srs.upper() == _GEOGRAPHIC_LUNAR:
-        return (xmin, ymin, xmax, ymax)
+        return (xmin, xmax, ymin, ymax)
     # Projected lunar CRS: convert the four corners to geographic lon/lat.
     from pyproj import Transformer
 
