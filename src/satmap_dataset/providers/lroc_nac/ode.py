@@ -8,10 +8,12 @@ matches — the parser normalizes both.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import asyncio
+from dataclasses import dataclass
 from datetime import datetime
 import logging
-from typing import Any, Iterable, Sequence
+import random
+from typing import Any, Iterable
 from urllib.parse import urlencode
 
 import httpx
@@ -217,9 +219,11 @@ async def search_products(
             logger.info("ODE GET %s", url)
             response = None
             for attempt in range(1, policy.max_attempts + 1):
+                await asyncio.sleep(random.uniform(0, policy.jitter_seconds))
                 try:
                     response = await active.get(url)
                     if response.status_code in policy.retry_for_statuses and attempt < policy.max_attempts:
+                        await asyncio.sleep(policy.backoff_seconds * attempt)
                         continue
                     response.raise_for_status()
                     break

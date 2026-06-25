@@ -75,6 +75,11 @@ def _ext_for_url(url: str) -> str:
     suffix = Path(urlparse(url).path).suffix
     return suffix or ".IMG"
 
+
+def _safe_name(pdsid: str) -> str:
+    name = pdsid.replace("/", "_").replace("\\", "_").replace("..", "_")
+    return name or "tile"
+
 DEFAULT_TARGET_SRS = "IAU_2015:30100"
 
 
@@ -250,7 +255,7 @@ class LrocNacProvider(Provider):
         jobs: list[tuple[int, str, str, Path]] = []
         for year in index_manifest.years_included:
             for pdsid, url in index_manifest.tile_sources_by_year.get(year, {}).items():
-                output_path = config.download_root / str(year) / f"{pdsid}{_ext_for_url(url)}"
+                output_path = config.download_root / str(year) / f"{_safe_name(pdsid)}{_ext_for_url(url)}"
                 jobs.append((year, pdsid, url, output_path))
 
         assets: list[str] = []
