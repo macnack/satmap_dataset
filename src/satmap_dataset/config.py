@@ -10,11 +10,13 @@ PROVIDER_GEOPORTAL = "geoportal"
 PROVIDER_LANTMATERIET = "lantmateriet"
 PROVIDER_SENTINEL2 = "sentinel2"
 PROVIDER_NLS = "nls"
+PROVIDER_LROC_NAC = "lroc_nac"
 ALLOWED_PROVIDERS = {
     PROVIDER_GEOPORTAL,
     PROVIDER_LANTMATERIET,
     PROVIDER_SENTINEL2,
     PROVIDER_NLS,
+    PROVIDER_LROC_NAC,
 }
 
 
@@ -43,6 +45,11 @@ def _validate_provider_srs(provider: str, srs: str) -> None:
             f"provider='nls' requires srs='{_NLS_NATIVE_SRS}' (NLS WCS/OAPIF "
             f"only accept TM35FIN coordinates); got srs={srs!r}. "
             "Reproject your bbox to EPSG:3067 before configuring an NLS run."
+        )
+    if provider == "lroc_nac" and not srs.upper().startswith("IAU_2015:301"):
+        raise ValueError(
+            f"provider='lroc_nac' requires a lunar IAU_2015:301xx CRS "
+            f"(e.g. 'IAU_2015:30100'); got srs={srs!r}."
         )
 
 
