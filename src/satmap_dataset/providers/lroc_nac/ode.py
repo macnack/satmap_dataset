@@ -36,7 +36,7 @@ class OdeProduct:
 
 @dataclass
 class OdeSearchOptions:
-    url: str = "https://oderest.rsl.wustl.edu/live2"
+    url: str = "https://oderest.rsl.wustl.edu/live2/"
     product_type: str = "CDRNAC4"
     loc: str = "f"
     results: str = "opmf"
@@ -202,7 +202,7 @@ async def search_products(
 ) -> list[OdeProduct]:
     """Page ODE by offset until a short page or `max_pages`. Returns parsed products."""
     owns_client = client is None
-    active = client or httpx.AsyncClient(timeout=timeout, headers={"User-Agent": "satmap_dataset/0.1"})
+    active = client or httpx.AsyncClient(timeout=timeout, follow_redirects=True, headers={"User-Agent": "satmap_dataset/0.1"})
     policy = retry_policy or RetryPolicy()
     all_products: list[OdeProduct] = []
     try:
