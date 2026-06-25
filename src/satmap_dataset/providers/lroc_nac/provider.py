@@ -318,7 +318,7 @@ class LrocNacProvider(Provider):
             tile_acquisition_by_year=index_manifest.tile_acquisition_by_year,
             assets=sorted(set(assets)),
             source_manifest=str(config.index_manifest),
-            mode="stac",
+            mode="ode",
             target_bbox=config.bbox,
             target_srs=config.srs,
             profile=config.profile,
