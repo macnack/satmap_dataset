@@ -4,12 +4,16 @@ from typing import Any
 
 from satmap_dataset.geoportal.http import RetryPolicy, request_with_retry
 
+# Each value is one or more Overpass statements, each terminated with `;`. They
+# are wrapped in a single union `(...)` by _build_query. The AOI is applied via a
+# global `[bbox:...]` setting (NOT a per-statement `(bbox)`), so unions like
+# green/water stay valid Overpass QL — `(union)(bbox)` is a 400 Bad Request.
 CATEGORY_QUERIES: dict[str, str] = {
-    "buildings": 'way["building"]',
-    "roads":     'way["highway"~"motorway|trunk|primary|secondary|tertiary|residential|service|living_street|unclassified"]',
-    "paths":     'way["highway"~"footway|cycleway|path|steps|pedestrian|track"]',
-    "green":     '(way["leisure"~"park|garden|pitch|playground|golf_course"]; way["natural"~"wood|scrub|grass|meadow"]; way["landuse"~"forest|meadow|grass|recreation_ground"];)',
-    "water":     '(way["natural"="water"]; way["waterway"];)',
+    "buildings": 'way["building"];',
+    "roads":     'way["highway"~"motorway|trunk|primary|secondary|tertiary|residential|service|living_street|unclassified"];',
+    "paths":     'way["highway"~"footway|cycleway|path|steps|pedestrian|track"];',
+    "green":     'way["leisure"~"park|garden|pitch|playground|golf_course"];way["natural"~"wood|scrub|grass|meadow"];way["landuse"~"forest|meadow|grass|recreation_ground"];',
+    "water":     'way["natural"="water"];way["waterway"];',
 }
 
 _DEFAULT_OVERPASS_URL = "https://overpass.kumi.systems/api/interpreter"
@@ -24,7 +28,9 @@ def _bbox_to_overpass(bbox_wgs84: str) -> str:
 def _build_query(category: str, bbox_overpass: str, snapshot_date: str) -> str:
     clause = CATEGORY_QUERIES[category]
     date_tag = f'[date:"{snapshot_date}"]'
-    return f'[out:json][timeout:55]{date_tag};({clause}({bbox_overpass}););out geom;'
+    # Global [bbox:] applies the AOI to every statement, so single statements and
+    # multi-statement unions (green/water) are both valid.
+    return f'[out:json][timeout:55]{date_tag}[bbox:{bbox_overpass}];({clause});out geom;'
 
 
 def _ways_to_geojson(overpass_result: dict) -> dict[str, Any]:
@@ -68,5 +74,11 @@ async def get_elements_geometry(
         data={"data": query},
         timeout=timeout,
         retry_policy=retry_policy,
+        # overpass-api.de returns 406 Not Acceptable unless an explicit JSON
+        # Accept header is sent (the httpx default `*/*` is rejected).
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "satmap_dataset (orthophoto dataset builder)",
+        },
     )
     return _ways_to_geojson(response.json())

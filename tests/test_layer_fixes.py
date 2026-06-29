@@ -115,12 +115,16 @@ def test_osm_layer_injects_grid_bbox(monkeypatch, tmp_path: Path):
     assert captured["config"].target_bbox == "5,5,95,95"
 
 
-def test_osm_run_rejects_unsupported_srs(tmp_path: Path):
-    """The WGS84 conversion only supports EPSG:2180; fail clearly otherwise."""
+def test_osm_run_rejects_unresolvable_srs(tmp_path: Path):
+    """A CRS pyproj cannot resolve must fail clearly rather than query a wrong AOI.
+
+    Valid projected CRSes (EPSG:2180/3006/3067) are supported now; see
+    test_osm_pipeline.test_run_accepts_epsg3006_and_converts_bbox.
+    """
     from satmap_dataset.pipeline import osm as osm_pipeline
 
     cfg = OsmConfig(
-        bbox="0,0,100,100", srs="EPSG:3006",
+        bbox="0,0,100,100", srs="EPSG:999999",
         osm_root=tmp_path / "osm", output_json=tmp_path / "osm" / "m.json",
         year_date_map={2024: "2024-06-01"},
         target_width=10, target_height=10,
@@ -129,7 +133,7 @@ def test_osm_run_rejects_unsupported_srs(tmp_path: Path):
     assert code == 1
     manifest = LayerManifest.load(out)
     assert manifest.passed is False
-    assert any("EPSG:2180" in e for e in manifest.errors)
+    assert any("cannot project" in e for e in manifest.errors)
 
 
 def test_location_run_returns_most_severe_exit_code(monkeypatch, tmp_path: Path):

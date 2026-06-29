@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import re
 from typing import Any
@@ -551,3 +552,76 @@ class OsmConfig(BaseModel):
         if self.target_bbox is not None:
             _validate_bbox(self.target_bbox)
         return self
+
+
+def _default_raw_root() -> Path:
+    env = os.environ.get("SATMAP_RAW_ROOT")
+    if env:
+        return Path(env).expanduser()
+    return Path("~/Github/sat_data_raw").expanduser()
+
+
+class RawExportConfig(BaseModel):
+    """Input config for the opt-in raw-export stage.
+
+    Exports native download tiles into <raw_root>/<provider>/<area>/<year>/ and
+    ingests co-located season-cell stacks. sentinel2 is rejected (not a raw
+    orthophoto tile provider).
+    """
+
+    provider: str
+    area: str
+    download_root: Path
+    download_manifest: Path | None = None
+    raw_root: Path = Field(default_factory=_default_raw_root)
+    min_coverage: float | None = None
+    link_mode: str = "symlink"
+    cell_mode: str = "footprint"
+    equalize_gsd: bool = True
+    cell_size_m: float | None = None
+    artifacts_dir: Path = Path("artifacts")
+    output_json: Path = Path("artifacts/raw_export_manifest.json")
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        if value == PROVIDER_SENTINEL2:
+            raise ValueError("provider 'sentinel2' is not a raw-orthophoto-tile provider")
+        if value not in ALLOWED_PROVIDERS:
+            raise ValueError(f"provider must be one of {sorted(ALLOWED_PROVIDERS)}")
+        return value
+
+    @field_validator("link_mode")
+    @classmethod
+    def validate_link_mode(cls, value: str) -> str:
+        if value not in {"symlink", "copy"}:
+            raise ValueError("link_mode must be 'symlink' or 'copy'")
+        return value
+
+    @field_validator("cell_mode")
+    @classmethod
+    def validate_cell_mode(cls, value: str) -> str:
+        if value not in {"footprint", "world_window"}:
+            raise ValueError("cell_mode must be 'footprint' or 'world_window'")
+        return value
+
+    @field_validator("min_coverage")
+    @classmethod
+    def validate_min_coverage(cls, value: float | None) -> float | None:
+        if value is not None and not (0.0 < value <= 1.0):
+            raise ValueError("min_coverage must be in (0, 1]")
+        return value
+
+    @field_validator("cell_size_m")
+    @classmethod
+    def validate_cell_size(cls, value: float | None) -> float | None:
+        if value is not None and value <= 0.0:
+            raise ValueError("cell_size_m must be > 0")
+        return value
+
+    @field_validator("area")
+    @classmethod
+    def validate_area(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("area must be non-empty")
+        return value

@@ -28,6 +28,7 @@ async def request_with_retry(
     timeout: float = 20.0,
     retry_policy: RetryPolicy | None = None,
     client: httpx.AsyncClient | None = None,
+    headers: dict[str, str] | None = None,
 ) -> httpx.Response:
     policy = retry_policy or RetryPolicy()
     owns_client = client is None
@@ -41,7 +42,7 @@ async def request_with_retry(
     try:
         for attempt in range(1, policy.max_attempts + 1):
             try:
-                response = await active_client.request(method=method, url=url, params=params, data=data)
+                response = await active_client.request(method=method, url=url, params=params, data=data, headers=headers)
                 if (
                     response.status_code in policy.retry_for_statuses
                     and attempt < policy.max_attempts

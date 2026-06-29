@@ -4,6 +4,8 @@ download*/
 dem_*/
 osm_*/
 .superpowers/
+previews/
+3rd_party/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

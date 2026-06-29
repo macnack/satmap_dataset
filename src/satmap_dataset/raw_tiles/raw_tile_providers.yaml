@@ -1,0 +1,10 @@
+# EPSG code -> provider label (output top-level namespace). Extend for new areas:
+# a genuinely new national CRS just needs one line here.
+#
+# A value may be a plain provider name, or a mapping
+#   <epsg>: {provider: <name>, min_coverage: <0..1>}
+# to override the default coverage gate for that provider (e.g. Geoportal godlo
+# sheets carry nodata borders, so a 0.95 gate would drop most of them).
+2180: {provider: geoportal, min_coverage: 0.5}   # Poland  (ETRS89 / Poland CS92)
+3006: lantmateriet                                # Sweden  (SWEREF99 TM)
+3067: nls                                         # Finland (ETRS89 / TM35FIN)
