@@ -191,6 +191,58 @@ dataset = SatelliteSeasonalHomographyDataset(
 
 The folder contains `year_YYYY.tif` with consistent width/height and `RGB_U8` profile.
 
+## Cross-GSD `gmix` cells (sat_roma training input)
+
+To produce the flat `*_gmix` cells that `sat_roma` consumes from its data root
+(`~/Github/sat_data/<provider>_<area>_<cellkey>_gmix/year_YYYY.{tif,tfw,prj}`),
+use the `gmix` recipes. These build **mixed-GSD, co-registered, equal-dim**
+season stacks via `world_window` raw-export — the right layout when a location
+mixes resolutions across years (e.g. Geoportal 0.05 m + 0.25 m). Note this path
+**skips render** (15 km² hi-res renders are huge and unused); it works from the
+native download tiles directly. Expect large downloads (~20–30 GB for a 15 km²
+AOI).
+
+The location JSON must opt in to the raw-export fields — `provider`,
+`cell_mode: "world_window"`, `equalize_gsd: true` — see
+[`configs/run/locations/wroclaw_15km2.json`](configs/run/locations/wroclaw_15km2.json):
+
+```json
+{
+  "location_name": "Wroclaw 15km2",
+  "center_lat": 51.107883,
+  "center_lon": 17.038538,
+  "area_km2": 15.0,
+  "provider": "geoportal",
+  "cell_mode": "world_window",
+  "equalize_gsd": true
+}
+```
+
+Run the whole chain (index + download → `world_window` raw-export → flatten):
+
+```bash
+just gmix location_json=configs/run/locations/wroclaw_15km2.json
+```
+
+Or each step on its own:
+
+```bash
+# 1. index + download only (no render) -> downloads_<slug>/<year>/
+just gmix-download location_json=configs/run/locations/wroclaw_15km2.json
+
+# 2. world_window raw-export -> <raw_root>/<provider>/<area>/<cellkey>/
+just raw-export-location-json location_json=configs/run/locations/wroclaw_15km2.json
+
+# 3. flatten into ~/Github/sat_data/<provider>_<area>_<cellkey>_gmix/
+just gmix-flatten location_json=configs/run/locations/wroclaw_15km2.json
+#    link_mode=copy (default) materialises files; link_mode=symlink links them.
+#    dest=<path> overrides the ~/Github/sat_data target.
+```
+
+A 15 km² AOI yields ~9 cells. `equalize_gsd: true` resamples every year to the
+coarsest GSD present so each cell is one equal-dim stack; pass `--raw-gsd` (set
+`equalize_gsd: false`) to keep native per-year GSDs (lossless window crop only).
+
 ## Finland (Maanmittauslaitos / NLS) provider
 
 The `nls` provider downloads year-aware orthophotos via Maanmittauslaitos's open

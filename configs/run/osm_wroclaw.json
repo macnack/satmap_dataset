@@ -1,0 +1,20 @@
+{
+  "center_lat": 51.107883,
+  "center_lon": 17.038538,
+  "square_km": 15,
+  "srs": "EPSG:2180",
+  "categories": ["buildings", "roads", "paths", "green", "water"],
+  "year_date_map": {
+    "2015": "2015-07-01",
+    "2020": "2020-07-01",
+    "2024": "2024-07-01"
+  },
+  "overpass_url": "https://overpass-api.de/api/interpreter",
+  "osm_root": "osm_wroclaw",
+  "output_json": "osm_wroclaw/osm_manifest.json",
+  "overwrite": false,
+  "sleep_min": 1.5,
+  "sleep_max": 3.0,
+  "retries": 6,
+  "retry_delay": 4.0
+}
