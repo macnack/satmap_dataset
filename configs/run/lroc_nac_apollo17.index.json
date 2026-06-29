@@ -1,0 +1,11 @@
+{
+  "year_start": 2009,
+  "year_end": 2026,
+  "bbox": "30.60,20.00,30.90,20.35",
+  "srs": "IAU_2015:30100",
+  "min_years": 2,
+  "provider": "lroc_nac",
+  "provider_options": {"product_type": "CDRNAC4", "page_limit": 100, "max_pages": 5},
+  "output_json": "artifacts_lroc_nac_apollo17/index_manifest.json",
+  "year_availability_output_json": "artifacts_lroc_nac_apollo17/year_availability_report.json"
+}

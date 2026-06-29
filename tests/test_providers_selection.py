@@ -33,3 +33,13 @@ def test_get_provider_returns_lantmateriet() -> None:
 def test_get_provider_rejects_unknown_name() -> None:
     with pytest.raises(ValueError, match="Unknown provider"):
         get_provider("does-not-exist")
+
+
+def test_get_provider_returns_lroc_nac() -> None:
+    from satmap_dataset.providers.lroc_nac import LrocNacProvider
+
+    provider = get_provider("lroc_nac")
+    assert isinstance(provider, LrocNacProvider)
+    assert isinstance(provider, Provider)
+    assert provider.name == "lroc_nac"
+    assert provider.default_target_srs == "IAU_2015:30100"

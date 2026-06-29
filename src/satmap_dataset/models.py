@@ -314,7 +314,7 @@ class LayerManifest(BaseModel):
     tile_acquisition_by_year: dict[int, dict[str, TileAcquisitionMetadata]] = Field(
         default_factory=dict
     )
-    mode: Literal["wms_tiled", "wfs_render", "hybrid", "stac"] = "hybrid"
+    mode: Literal["wms_tiled", "wfs_render", "hybrid", "stac", "ode"] = "hybrid"
     target_width: int | None = None
     target_height: int | None = None
     target_bbox: str | None = None
