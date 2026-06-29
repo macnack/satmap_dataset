@@ -374,6 +374,15 @@ def _build_raw_export_config_from_base_and_location(*, base_json: Path, location
     artifacts_dir = Path(str(merged.get("artifacts_dir")))
     merged.setdefault("download_manifest", str(artifacts_dir / "dataset_manifest_download.json"))
     merged.setdefault("output_json", str(artifacts_dir / "raw_export_manifest.json"))
+    # Resolve the AOI (same center+area as the rest of the pipeline) so world_window
+    # can clip godło sheets that over-cover beyond it. Optional: skip if unresolvable.
+    if "aoi_bbox" not in merged:
+        try:
+            resolved = _resolve_json_center_bbox(dict(merged), required=False)
+            if resolved.get("bbox"):
+                merged["aoi_bbox"] = resolved["bbox"]
+        except (typer.BadParameter, ValueError, KeyError):
+            pass
     # base.json carries many keys for other stages; keep only RawExportConfig fields.
     allowed = set(RawExportConfig.model_fields)
     cleaned = {k: v for k, v in merged.items() if k in allowed}

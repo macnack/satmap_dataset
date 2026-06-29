@@ -579,6 +579,8 @@ class RawExportConfig(BaseModel):
     cell_mode: str = "footprint"
     equalize_gsd: bool = True
     cell_size_m: float | None = None
+    aoi_bbox: str | None = None
+    min_aoi_overlap: float = 0.25
     artifacts_dir: Path = Path("artifacts")
     output_json: Path = Path("artifacts/raw_export_manifest.json")
 
@@ -617,6 +619,18 @@ class RawExportConfig(BaseModel):
     def validate_cell_size(cls, value: float | None) -> float | None:
         if value is not None and value <= 0.0:
             raise ValueError("cell_size_m must be > 0")
+        return value
+
+    @field_validator("aoi_bbox")
+    @classmethod
+    def validate_aoi_bbox(cls, value: str | None) -> str | None:
+        return _validate_bbox(value) if value is not None else None
+
+    @field_validator("min_aoi_overlap")
+    @classmethod
+    def validate_min_aoi_overlap(cls, value: float) -> float:
+        if not (0.0 <= value <= 1.0):
+            raise ValueError("min_aoi_overlap must be in [0, 1]")
         return value
 
     @field_validator("area")

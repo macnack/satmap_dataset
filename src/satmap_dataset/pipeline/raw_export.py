@@ -104,10 +104,14 @@ def run(config: RawExportConfig) -> tuple[int, Path]:
     registry = rt.load_provider_registry()
     src_area = Path(config.raw_root) / config.provider / config.area
     if config.cell_mode == "world_window":
+        aoi_bbox = None
+        if config.aoi_bbox:
+            aoi_bbox = tuple(float(v) for v in config.aoi_bbox.split(","))
         area_manifest = ingest_area_world_window(
             src_area, Path(config.raw_root), registry,
             cell_size_m=config.cell_size_m, min_coverage=config.min_coverage,
             equalize_gsd=config.equalize_gsd,
+            aoi_bbox=aoi_bbox, min_aoi_overlap=config.min_aoi_overlap,
         )
     else:
         area_manifest = rt.ingest_area(
