@@ -380,3 +380,27 @@ class RawExportManifest(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     run_parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class CellEntry(BaseModel):
+    name: str
+    ix: int
+    iy: int
+    bbox: str  # "xmin,ymin,xmax,ymax" in `srs` axis order
+    bbox_wgs84: str  # "lon_min,lat_min,lon_max,lat_max"
+    center_lat: float
+    center_lon: float
+    download_status: str | None = None  # None|"ok"|"failed"|"skipped"
+
+
+class TrajectoryManifest(BaseModel):
+    track_path: str
+    point_count: int = Field(..., ge=0)
+    srs: str
+    cell_m: float = Field(..., gt=0.0)
+    year_start: int = Field(..., ge=1900)
+    year_end: int = Field(..., ge=1900)
+    union_bbox_2180: str
+    cell_count: int = Field(..., ge=0)
+    cells: list[CellEntry] = Field(default_factory=list)
+    generated_at: datetime = Field(default_factory=_utc_now)

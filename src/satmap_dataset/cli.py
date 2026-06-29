@@ -2056,6 +2056,53 @@ def raw_test_manifest_command(
     typer.echo(str(out_path.resolve()))
 
 
+@app.command("trajectory")
+def trajectory_cmd(
+    track: Path = typer.Option(..., "--track", help="Track file (.csv/.igc) or a directory with one .igc."),
+    out: Path = typer.Option(..., "--out", help="Output directory for the manifest, preview, and downloads."),
+    cell_km: float = typer.Option(1.0, "--cell-km", min=0.0001, help="Grid cell size in km."),
+    year_start: int = typer.Option(2020, "--year-start"),
+    year_end: int = typer.Option(2025, "--year-end"),
+    download: bool = typer.Option(False, "--download/--no-download", help="Download source orthophoto for each window."),
+    preview: bool = typer.Option(True, "--preview/--no-preview", help="Write a GeoJSON preview."),
+) -> None:
+    from satmap_dataset.config import TrajectoryConfig
+    from satmap_dataset.pipeline import trajectory as trajectory_stage
+
+    try:
+        config = TrajectoryConfig(
+            track_path=track,
+            output_dir=out,
+            cell_km=cell_km,
+            year_start=year_start,
+            year_end=year_end,
+            download=download,
+            preview=preview,
+        )
+        code, path = trajectory_stage.run(config)
+    except (ValueError, RuntimeError, OSError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2)
+    _finish(code, path)
+
+
+@app.command("trajectory-json")
+def trajectory_json_cmd(
+    config_json: Path = typer.Argument(..., help="JSON file mapped 1:1 onto TrajectoryConfig."),
+) -> None:
+    from satmap_dataset.config import TrajectoryConfig
+    from satmap_dataset.pipeline import trajectory as trajectory_stage
+
+    payload = _load_params_json_dict(config_json)
+    try:
+        config = TrajectoryConfig(**payload)
+        code, path = trajectory_stage.run(config)
+    except (ValueError, RuntimeError, OSError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2)
+    _finish(code, path)
+
+
 def main() -> None:
     configure_logging("INFO")
     app()

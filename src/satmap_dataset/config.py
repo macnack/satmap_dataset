@@ -625,3 +625,32 @@ class RawExportConfig(BaseModel):
         if not value.strip():
             raise ValueError("area must be non-empty")
         return value
+
+
+class TrajectoryConfig(BaseModel):
+    track_path: Path
+    output_dir: Path
+    cell_km: float = Field(default=1.0, gt=0.0)
+    srs: str = "EPSG:2180"
+    year_start: int = Field(default=2020, ge=1900)
+    year_end: int = Field(default=2025, ge=1900)
+    download: bool = False
+    preview: bool = True
+    mode: str = "hybrid"
+    profile: str = "train"
+    wms_fallback_missing_years: bool = True
+    concurrency: int = Field(default=6, ge=1, le=64)
+    retries: int = Field(default=3, ge=0, le=20)
+    retry_delay: float = Field(default=1.0, gt=0.0)
+    timeout: float = Field(default=120.0, gt=0.0)
+    sleep_min: float = Field(default=0.6, ge=0.0)
+    sleep_max: float = Field(default=2.2, ge=0.0)
+    overwrite: bool = False
+
+    @model_validator(mode="after")
+    def _validate(self) -> "TrajectoryConfig":
+        if self.year_end < self.year_start:
+            raise ValueError("year_end must be >= year_start")
+        if self.sleep_max < self.sleep_min:
+            raise ValueError("sleep_max must be >= sleep_min")
+        return self

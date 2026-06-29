@@ -109,3 +109,11 @@ raw-export-all-json locations_dir="configs/run/locations" base_json="configs/run
 # Build the cross-location split test_manifest.yaml consumed by sat_roma
 raw-test-manifest min_years="2":
   my="{{min_years}}"; my="${my#min_years=}"; python -m satmap_dataset.cli raw-test-manifest --min-years "$my"
+
+# Trajectory -> 1km grid windows the GPS track crosses (manifest + GeoJSON preview)
+trajectory track out cell_km="1.0":
+  python -m satmap_dataset.cli trajectory --track {{track}} --out {{out}} --cell-km {{cell_km}} --no-download
+
+# Same, plus download source orthophoto (2020-2025) for each window
+trajectory-download track out cell_km="1.0":
+  python -m satmap_dataset.cli trajectory --track {{track}} --out {{out}} --cell-km {{cell_km}} --download

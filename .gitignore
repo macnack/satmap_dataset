@@ -6,6 +6,7 @@ osm_*/
 .superpowers/
 previews/
 3rd_party/
+trajectory_*/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
