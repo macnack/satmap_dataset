@@ -240,14 +240,28 @@ def _parse_int_or_none(value: str | None) -> int | None:
         return None
 
 
-def _extract_tile_acquisition_metadata(feature: ET.Element, year: int) -> dict[str, int | str | None]:
+def _parse_float_or_none(value: str | None) -> float | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    try:
+        return float(stripped)
+    except ValueError:
+        return None
+
+
+def _extract_tile_acquisition_metadata(feature: ET.Element, year: int) -> dict[str, int | str | float | None]:
     acquisition_date = _find_timeinstant_value(feature, "akt_data")
     publication_date = _find_timeinstant_value(feature, "dt_pzgik")
     acquisition_year = _parse_int_or_none(_find_attr_value(feature, "akt_rok")) or year
+    gsd = _parse_float_or_none(_find_attr_value(feature, "piksel"))
     return {
         "acquisition_date": acquisition_date,
         "publication_date": publication_date,
         "acquisition_year": acquisition_year,
+        "gsd": gsd,
     }
 
 
@@ -260,7 +274,7 @@ async def get_year_tiles(
     timeout: float = 20.0,
     retry_policy: RetryPolicy | None = None,
     year_to_typename: dict[int, str] | None = None,
-) -> tuple[YearStatus, dict[str, str], dict[str, list[float]], dict[str, dict[str, int | str | None]]]:
+) -> tuple[YearStatus, dict[str, str], dict[str, list[float]], dict[str, dict[str, int | str | float | None]]]:
     mapping = year_to_typename
     if mapping is None:
         _, mapping = await get_capabilities(
@@ -286,7 +300,7 @@ async def get_year_tiles(
 
     tiles: dict[str, str] = {}
     tile_bboxes: dict[str, list[float]] = {}
-    tile_acquisition: dict[str, dict[str, int | str | None]] = {}
+    tile_acquisition: dict[str, dict[str, int | str | float | None]] = {}
     request_bbox = _parse_bbox_str(bbox)
     tile_overlap_by_id: dict[str, float] = {}
     tile_color_priority_by_id: dict[str, int] = {}

@@ -133,7 +133,7 @@ def test_osm_run_rejects_unresolvable_srs(tmp_path: Path):
     assert code == 1
     manifest = LayerManifest.load(out)
     assert manifest.passed is False
-    assert any("cannot project" in e for e in manifest.errors)
+    assert any("reproject" in e for e in manifest.errors)
 
 
 def test_location_run_returns_most_severe_exit_code(monkeypatch, tmp_path: Path):

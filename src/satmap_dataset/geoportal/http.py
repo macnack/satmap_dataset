@@ -25,10 +25,10 @@ async def request_with_retry(
     *,
     params: dict[str, Any] | None = None,
     data: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
     timeout: float = 20.0,
     retry_policy: RetryPolicy | None = None,
     client: httpx.AsyncClient | None = None,
-    headers: dict[str, str] | None = None,
 ) -> httpx.Response:
     policy = retry_policy or RetryPolicy()
     owns_client = client is None

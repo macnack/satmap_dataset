@@ -24,6 +24,13 @@ class TileAcquisitionMetadata(BaseModel):
     acquisition_date: str | None = None
     publication_date: str | None = None
     acquisition_year: int | None = None
+    gsd: float | None = None
+
+
+class YearGsdSummary(BaseModel):
+    histogram: dict[str, int] = Field(default_factory=dict)
+    finest: float | None = None
+    coarsest: float | None = None
 
 
 class ReferenceGrid(BaseModel):
@@ -99,6 +106,7 @@ class IndexManifest(BaseModel):
     tile_sources_by_year: dict[int, dict[str, str]] = Field(default_factory=dict)
     tile_bboxes_by_year: dict[int, dict[str, list[float]]] = Field(default_factory=dict)
     tile_acquisition_by_year: dict[int, dict[str, TileAcquisitionMetadata]] = Field(default_factory=dict)
+    gsd_by_year: dict[int, YearGsdSummary] = Field(default_factory=dict)
     passed: bool
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
@@ -174,6 +182,7 @@ class YearAvailabilityReport(BaseModel):
     years_available_wfs: list[int]
     years_included: list[int]
     years_excluded_with_reason: dict[int, str] = Field(default_factory=dict)
+    gsd_by_year: dict[int, YearGsdSummary] = Field(default_factory=dict)
     strict_years: bool = False
     min_years: int = 1
     passed: bool

@@ -21,10 +21,12 @@ def test_bbox_to_wgs84_epsg3006_sweden():
         "717646.631,7534133.478,721519.615,7538006.462", "EPSG:3006"
     )
     lon_min, lat_min, lon_max, lat_max = (float(x) for x in result.split(","))
+    # 4-corner transform: min/max over all corners gives the true enclosing box
+    # (lat_min/lat_max come from the south/north edges, not just the SW/NE corners).
     assert abs(lon_min - 20.175606) < 0.001
-    assert abs(lat_min - 67.839960) < 0.001
+    assert abs(lat_min - 67.837032) < 0.001
     assert abs(lon_max - 20.275062) < 0.001
-    assert abs(lat_max - 67.871624) < 0.001
+    assert abs(lat_max - 67.874557) < 0.001
 
 
 def test_bbox_to_wgs84_epsg2180_matches_legacy_helper():
@@ -40,19 +42,20 @@ def test_category_filters_all_present():
     assert set(CATEGORY_QUERIES.keys()) == {"buildings", "roads", "paths", "green", "water"}
 
 
-def test_build_query_uses_global_bbox_for_all_categories():
-    """Union categories (green/water) must not get a bbox applied to the group.
+def test_build_query_applies_bbox_per_statement():
+    """The AOI is applied per-statement as `(S,W,N,E)`, not as a global [bbox:].
 
-    The valid form is a global [bbox:S,W,N,E] setting; `(union)(bbox)` is a 400.
+    Multi-statement unions (green/water) keep the bbox on each member because
+    applying it to the parenthesised union as a whole — `(a; b;)(bbox)` — is a 400.
     """
     from satmap_dataset.osm import overpass_client
 
     bbox = "67.83,20.17,67.87,20.27"  # S,W,N,E
     for category in ("buildings", "roads", "paths", "green", "water"):
         q = overpass_client._build_query(category, bbox, "2021-07-01T00:00:00Z")
-        assert f"[bbox:{bbox}]" in q, q
-        # The broken pattern applied a bbox to the parenthesised union/statement.
-        assert f"({bbox})" not in q, q
+        # bbox sits on each statement, never as a global [bbox:...] setting.
+        assert f"({bbox})" in q, q
+        assert f"[bbox:{bbox}]" not in q, q
         assert q.endswith("out geom;")
 
     # green is a union of multiple way[...] statements, all inside one (...).
