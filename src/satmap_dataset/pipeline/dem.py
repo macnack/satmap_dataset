@@ -81,6 +81,68 @@ def _merge_tiles(tiles: list[Path], out_path: Path) -> None:
         vrt_path.unlink(missing_ok=True)
 
 
+def _normalise_elevation_raster(path: Path) -> str | None:
+    """Collapse a multi-band elevation response to one Float32 band, in place.
+
+    The GUGiK NMPT service answers ``FORMAT=image/tiff`` with a 3-band Byte
+    raster whose bands are identical and whose values are the elevation rounded
+    to whole metres (verified 2026-08-01 against the same window fetched as
+    ``image/x-aaigrid``: |diff| p95 = 0.47 m). Consumers of this pipeline read
+    the declared ``DEM_F32`` profile, so the raster is rewritten as a single
+    Float32 band and the lost precision is reported rather than hidden. Pass
+    ``provider_options={"format": "image/x-aaigrid"}`` to fetch full float
+    precision instead (~20x the bytes on the wire).
+
+    Returns a warning string when something was changed or looks wrong, and
+    None when the raster already is single-band elevation data.
+    """
+    try:
+        import numpy as np
+        import tifffile
+
+        arr = np.asarray(tifffile.imread(str(path)))
+    except Exception:  # noqa: BLE001 - diagnostics only, never fail the fetch
+        logger.warning("Could not inspect %s for band normalisation.", path)
+        return None
+
+    if arr.ndim != 3 or arr.shape[-1] < 2:
+        return None
+    if not all(np.array_equal(arr[..., 0], arr[..., b]) for b in range(1, arr.shape[-1])):
+        return (
+            f"{path.name}: {arr.shape[-1]}-band response whose bands differ; left as "
+            "fetched, so it is NOT the single-band Float32 the DEM_F32 profile promises"
+        )
+
+    gdal_translate = _tool_path("gdal_translate")
+    if not gdal_translate:
+        return (
+            f"{path.name}: {arr.shape[-1]}-band elevation response could not be collapsed "
+            "to single-band Float32 (GDAL CLI not found); the DEM_F32 profile is not met"
+        )
+    tmp_path = path.with_suffix(".normalised.tif")
+    try:
+        subprocess.run(
+            [
+                gdal_translate, "-b", "1", "-ot", "Float32",
+                "-co", "COMPRESS=DEFLATE", str(path), str(tmp_path),
+            ],
+            check=True, capture_output=True, text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        tmp_path.unlink(missing_ok=True)
+        return f"{path.name}: band normalisation failed: {(exc.stderr or '')[-200:]}"
+    tmp_path.replace(path)
+    quantised = np.issubdtype(arr.dtype, np.integer)
+    return (
+        f"{path.name}: service returned {arr.shape[-1]} identical {arr.dtype} bands; "
+        "collapsed to single-band Float32"
+        + (
+            " — elevations are quantised to 1 m, request format image/x-aaigrid for "
+            "full precision" if quantised else ""
+        )
+    )
+
+
 def _align_to_grid(
     native: Path, out_path: Path, *,
     target_bbox: tuple[float, float, float, float],
@@ -264,6 +326,7 @@ async def _run_async(config: DemConfig) -> tuple[int, Path]:
     resample = str(config.provider_options.get("resample", "bilinear"))
     product_assets: list[DemProductAsset] = []
     errors: list[str] = []
+    warnings: list[str] = []
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
@@ -283,6 +346,10 @@ async def _run_async(config: DemConfig) -> tuple[int, Path]:
                     )
                     asset.tile_count = len(tiles)
                     _merge_tiles(tiles, native_path)
+                    normalisation = _normalise_elevation_raster(native_path)
+                    if normalisation:
+                        logger.warning("%s", normalisation)
+                        warnings.append(normalisation)
                 if _coverage_is_empty(native_path):
                     asset.errors.append("coverage empty / nodata-only for AOI")
                     errors.append(f"{product}: empty coverage")
@@ -319,6 +386,7 @@ async def _run_async(config: DemConfig) -> tuple[int, Path]:
         errors=errors,
         notes="WCS GRID1 serves a current-best 1 m composite; not year-aware.",
     )
+    manifest.warnings.extend(warnings)
     config.output_json.parent.mkdir(parents=True, exist_ok=True)
     config.output_json.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
     logger.info(

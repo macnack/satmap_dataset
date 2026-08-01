@@ -6,10 +6,12 @@ from satmap_dataset.geoportal import wcs_client
 
 
 def test_coverage_id_all_combinations():
+    # Coverage ids verified against the live GetCapabilities (2026-08-01): the NMT
+    # service publishes the `_TIFF` variants, the NMPT service does not.
     assert wcs_client.coverage_id("nmt", "evrf2007") == "DTM_PL-EVRF2007-NH_TIFF"
     assert wcs_client.coverage_id("nmt", "kron86") == "DTM_PL-KRON86-NH_TIFF"
-    assert wcs_client.coverage_id("nmpt", "evrf2007") == "DSM_PL-EVRF2007-NH_TIFF"
-    assert wcs_client.coverage_id("nmpt", "kron86") == "DSM_PL-KRON86-NH_TIFF"
+    assert wcs_client.coverage_id("nmpt", "evrf2007") == "DSM_PL-EVRF2007-NH"
+    assert wcs_client.coverage_id("nmpt", "kron86") == "DSM_PL-KRON86-NH"
 
 
 def test_coverage_id_rejects_unknown():
@@ -19,9 +21,21 @@ def test_coverage_id_rejects_unknown():
         wcs_client.coverage_id("nmt", "wgs84")
 
 
+def test_coverage_id_template_override_applies_to_every_product():
+    options = {"coverage_id_template": "{prefix}::{datum}"}
+    assert wcs_client.coverage_id("nmt", "kron86", options) == "DTM::PL-KRON86-NH"
+    assert wcs_client.coverage_id("nmpt", "kron86", options) == "DSM::PL-KRON86-NH"
+
+
 def test_endpoint_url_default_and_override():
-    assert "NMT/GRID1/WCS" in wcs_client.endpoint_url("nmt")
-    assert "NMPT/GRID1/WCS" in wcs_client.endpoint_url("nmpt")
+    # Endpoint paths verified live (2026-08-01): the `...FormatTIFF` NMPT path that
+    # GUGiK used to serve now 404s, including for GetCapabilities.
+    assert wcs_client.endpoint_url("nmt").endswith(
+        "/PZGIK/NMT/GRID1/WCS/DigitalTerrainModelFormatTIFF"
+    )
+    assert wcs_client.endpoint_url("nmpt").endswith(
+        "/PZGIK/NMPT/GRID1/WCS/DigitalSurfaceModel"
+    )
     custom = {"endpoints": {"nmt": "https://example/custom"}}
     assert wcs_client.endpoint_url("nmt", custom) == "https://example/custom"
 
