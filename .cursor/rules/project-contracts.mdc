@@ -1,0 +1,35 @@
+---
+description: Load-bearing pipeline contracts (exit codes, reuse, stage API)
+alwaysApply: true
+---
+
+# Project contracts
+
+Full architecture: `CLAUDE.md` at repo root. These invariants are non-negotiable.
+
+## Stage API
+
+Every pipeline stage is `run(config) -> tuple[int, Path]` writing one JSON manifest.
+
+- Exit codes: `0` success, `1` policy/data failure, `2` invalid CLI/config
+- Last stdout line of every CLI command: absolute path of the artifact written
+- Never return `None` or print the artifact path elsewhere
+
+## Idempotent reuse (`pipeline/run_all.py`)
+
+When changing stage behavior, update reuse predicates or `run-all` silently keeps stale outputs:
+
+- `_can_reuse_index`: year range, bbox, srs, strict/min, **provider**, geoportal `wfs_bbox_axes_swapped` vs `geo.bbox.wfs_query_axes_swapped(srs)`, tile bboxes not axis-swapped (`_index_manifest_has_swapped_tile_bboxes`)
+- `_can_reuse_download`: provider, mode/profile, `force_wms_years`, asset paths exist on disk
+
+## Downloads
+
+Stream to `.part`, rename on success (`satmap_dataset.io.atomic`). Never write truncated files to final paths — reuse checks treat any non-empty file as complete.
+
+## Configs
+
+Construct via Pydantic models in `config.py`. New fields must default-resolve when missing from `base.json` or location JSON.
+
+## Providers
+
+RGB acquisition: `providers.get_provider(name)`. Registry includes geoportal, lantmateriet, sentinel2, lroc_nac, nls.

@@ -56,7 +56,7 @@ Four stages, each implemented as `src/satmap_dataset/pipeline/<stage>.py` exposi
 
 `pipeline/run_all.py` orchestrates all four and is the entry point for the `run`, `run-json`, and `run-location-json` CLI commands. It implements **idempotent reuse**:
 
-- Index is reused if `_can_reuse_index` matches (year range, bbox, srs, strict/min flags) and tile bboxes don't appear axis-swapped.
+- Index is reused if `_can_reuse_index` matches (year range, bbox, srs, strict/min flags, provider) and tile bboxes don't appear axis-swapped.
 - Download is reused if `_can_reuse_download` matches mode/profile/`force_wms_years` and every asset path on disk still exists.
 - `run-all-location-json` skips a whole location when `<artifacts_dir>/validation_report.json` already shows `passed=true`.
 
@@ -81,7 +81,7 @@ The base+location merge logic lives in `_build_*_config_from_base_and_location` 
 
 Two mutually exclusive ways to specify the AOI:
 
-- `--bbox xmin,ymin,xmax,ymax` in the chosen `--srs` (default `EPSG:2180`, project axis order `x,y`).
+- `--bbox xmin,ymin,xmax,ymax` in the chosen `--srs` (default `EPSG:2180`, project axis order x,y = easting, northing).
 - Center mode: `--center-lat`/`--center-lon` (WGS84) plus `--square-km` (default `4.0` → 2 km × 2 km square). EPSG:2180 only.
 
 JSON inputs accept `center_lat`/`center_lon` plus either `square_km` or `area_km2` (mutually exclusive). Resolution goes through `_resolve_json_center_bbox` and uses `pyproj` if available, else shells out to the `proj` CLI — both are acceptable, but errors mention both. See `_lonlat_to_epsg2180` in `cli.py`.
@@ -129,4 +129,8 @@ Sample configs: `configs/run/lroc_nac_apollo17.{index,download}.json`.
 - Stage `run()` functions return `(exit_code, artifact_path)` and write a single JSON manifest. Don't return None or print the path elsewhere — the CLI wrapper relies on the tuple and the artifact path is the contract for shell composition.
 - New config fields must default-resolve cleanly when missing from `base.json` or a location JSON; existing generated configs in `configs/run/generated/` are checked in and act as fixtures.
 - The `mosaic` CLI command is a backwards-compatible alias for `render`. Don't reintroduce a separate mosaic stage.
-- `experimental_wfs_swap_bbox_axes` is a deprecated escape hatch for axis-order bugs; prefer fixing detection in `_index_manifest_has_swapped_tile_bboxes`.
+### bbox axis order
+
+**Authority:** `src/satmap_dataset/geo/bbox.py`. Project bboxes are always `(easting, northing)` for EPSG:2180. WFS/GUGiK skorowidz queries use `wfs_query_bbox_str()` (authority order). Render `source_axis_mode` handles swapped TIFF georef separately.
+
+- `experimental_wfs_swap_bbox_axes` is deprecated and ignored for EPSG:2180.

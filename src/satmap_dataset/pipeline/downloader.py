@@ -8,12 +8,13 @@ from pathlib import Path
 from urllib.parse import urlparse
 import logging
 
-import aiofiles
+from satmap_dataset.io.atomic import write_bytes_atomic, write_stream_atomic
 import httpx
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 import tifffile
 
 from satmap_dataset.config import DownloadConfig
+from satmap_dataset.geo.bbox import overlap_area
 from satmap_dataset.models import IndexManifest, LayerManifest
 
 logger = logging.getLogger("satmap_dataset.download")
@@ -145,14 +146,12 @@ def _is_valid_cached_asset(path: Path) -> bool:
     return False
 
 
+
 def _bbox_intersection_area(a: BBox, b: BBox) -> float:
-    min_x = max(a.min_x, b.min_x)
-    min_y = max(a.min_y, b.min_y)
-    max_x = min(a.max_x, b.max_x)
-    max_y = min(a.max_y, b.max_y)
-    if min_x >= max_x or min_y >= max_y:
-        return 0.0
-    return (max_x - min_x) * (max_y - min_y)
+    return overlap_area(
+        (a.min_x, a.min_y, a.max_x, a.max_y),
+        (b.min_x, b.min_y, b.max_x, b.max_y),
+    )
 
 
 def _swap_bbox_axes(bbox: BBox) -> BBox:
@@ -371,9 +370,7 @@ async def _download_with_retry(
         try:
             async with client.stream("GET", url) as response:
                 response.raise_for_status()
-                async with aiofiles.open(output_path, "wb") as file_handle:
-                    async for chunk in response.aiter_bytes():
-                        await file_handle.write(chunk)
+                await write_stream_atomic(output_path, response)
             return True
         except (httpx.HTTPError, OSError):
             if attempt >= attempts:
@@ -422,8 +419,7 @@ async def _download_wms_tile_with_retry(
             content_type = response.headers.get("Content-Type", "").lower()
             if "image" not in content_type and "tiff" not in content_type:
                 raise RuntimeError(f"Expected image response, got {content_type or 'unknown'}")
-            async with aiofiles.open(output_path, "wb") as file_handle:
-                await file_handle.write(response.content)
+            await write_bytes_atomic(output_path, response.content)
             return True
         except Exception:
             if attempt >= attempts:

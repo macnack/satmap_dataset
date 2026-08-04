@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 from satmap_dataset.config import DemAvailabilityConfig
+from satmap_dataset.geo.bbox import parse as parse_project_bbox, wfs_query_bbox_str
 from satmap_dataset.geoportal import dem_skorowidz_client
 from satmap_dataset.geoportal.http import RetryPolicy
 from satmap_dataset.models import DemAvailabilityEntry, DemAvailabilityReport
@@ -15,10 +16,7 @@ _FULL_THRESHOLD = 99.9
 
 
 def _parse_bbox(value: str) -> tuple[float, float, float, float]:
-    parts = [float(p.strip()) for p in value.split(",")]
-    if len(parts) != 4:
-        raise ValueError("bbox must have format xmin,ymin,xmax,ymax")
-    return (parts[0], parts[1], parts[2], parts[3])
+    return parse_project_bbox(value).as_tuple()
 
 
 def _coverage_pct(
@@ -77,17 +75,14 @@ def _formats_from_urls(urls: list[str]) -> list[str]:
     return sorted(found)
 
 
-def _swap_bbox(bbox: tuple[float, float, float, float]) -> str:
-    xmin, ymin, xmax, ymax = bbox
-    return f"{ymin},{xmin},{ymax},{xmax}"
-
 
 async def _run_async(config: DemAvailabilityConfig) -> tuple[int, Path]:
     retry_policy = RetryPolicy(max_attempts=config.retries, backoff_seconds=config.retry_delay)
     options = dict(config.provider_options)
-    bbox = _parse_bbox(config.bbox)
-    swap = bool(options.get("wfs_swap_bbox_axes", config.srs.strip().upper() == "EPSG:2180"))
-    query_bbox = _swap_bbox(bbox) if swap else config.bbox
+    if options.get("wfs_swap_bbox_axes") is False:
+        query_bbox = config.bbox
+    else:
+        query_bbox = wfs_query_bbox_str(config.bbox, config.srs)
     cov_aoi = _parse_bbox(query_bbox)  # coverage computed in the same (query) space
     year_filter = config.requested_years  # None = all advertised
 

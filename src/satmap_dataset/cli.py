@@ -1878,15 +1878,13 @@ def _nls_force_provider(payload: dict) -> dict:
 
 @app.command("nls-index-json")
 def nls_index_json(config_json: Path = typer.Argument(..., exists=True)) -> None:
-    from satmap_dataset.providers.nls import NlsProvider
-
     payload = _nls_force_provider(json.loads(config_json.read_text(encoding="utf-8")))
     try:
         cfg = IndexConfig(**payload)
     except ValidationError as error:
         _print_validation_error(error)
         raise typer.Exit(code=2) from error
-    exit_code, artifact = NlsProvider().index(cfg)
+    exit_code, artifact = get_provider("nls").index(cfg)
     _finish(exit_code, artifact)
 
 
@@ -1913,8 +1911,6 @@ def _nls_build_download_config(payload: dict, index_manifest_path: Path) -> Down
 
 @app.command("nls-download-json")
 def nls_download_json(config_json: Path = typer.Argument(..., exists=True)) -> None:
-    from satmap_dataset.providers.nls import NlsProvider
-
     payload = _nls_force_provider(json.loads(config_json.read_text(encoding="utf-8")))
     try:
         # Parse as IndexConfig to learn where the index manifest lives
@@ -1926,22 +1922,20 @@ def nls_download_json(config_json: Path = typer.Argument(..., exists=True)) -> N
     except ValidationError as error:
         _print_validation_error(error)
         raise typer.Exit(code=2) from error
-    exit_code, artifact = NlsProvider().download(cfg)
+    exit_code, artifact = get_provider("nls").download(cfg)
     _finish(exit_code, artifact)
 
 
 @app.command("nls-run-json")
 def nls_run_json(config_json: Path = typer.Argument(..., exists=True)) -> None:
     """Single-shot NLS index + download from one JSON config."""
-    from satmap_dataset.providers.nls import NlsProvider
-
     payload = _nls_force_provider(json.loads(config_json.read_text(encoding="utf-8")))
     try:
         index_cfg = IndexConfig(**{k: v for k, v in payload.items() if k in IndexConfig.model_fields})
     except ValidationError as error:
         _print_validation_error(error)
         raise typer.Exit(code=2) from error
-    provider = NlsProvider()
+    provider = get_provider("nls")
     exit_code, index_artifact = provider.index(index_cfg)
     if exit_code != 0:
         _finish(exit_code, index_artifact)

@@ -35,67 +35,23 @@ def _load_dataset_manifest(path: Path) -> LayerManifest | None:
         return None
 
 
-def _parse_bbox(value: str) -> tuple[float, float, float, float]:
-    parts = [float(part.strip()) for part in value.split(",")]
-    if len(parts) != 4:
-        raise ValueError("bbox must have 4 values")
-    min_x, min_y, max_x, max_y = parts
-    if min_x >= max_x or min_y >= max_y:
-        raise ValueError("bbox must satisfy min_x<max_x and min_y<max_y")
-    return min_x, min_y, max_x, max_y
-
-
-def _swap_bbox_axes(bbox: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
-    min_x, min_y, max_x, max_y = bbox
-    return min_y, min_x, max_y, max_x
-
-
-def _bbox_overlap_area(
-    a: tuple[float, float, float, float],
-    b: tuple[float, float, float, float],
-) -> float:
-    min_x = max(a[0], b[0])
-    min_y = max(a[1], b[1])
-    max_x = min(a[2], b[2])
-    max_y = min(a[3], b[3])
-    if min_x >= max_x or min_y >= max_y:
-        return 0.0
-    return (max_x - min_x) * (max_y - min_y)
+from satmap_dataset.geo.bbox import (
+    collect_tile_bbox_samples,
+    parse as parse_bbox,
+    tile_bboxes_look_swapped_vs_project,
+    wfs_query_axes_swapped,
+)
 
 
 def _index_manifest_has_swapped_tile_bboxes(manifest: IndexManifest) -> bool:
     if not manifest.tile_bboxes_by_year:
         return False
     try:
-        request_bbox = _parse_bbox(manifest.bbox)
+        request_bbox = parse_bbox(manifest.bbox).as_tuple()
     except Exception:
         return False
-
-    samples: list[tuple[float, float, float, float]] = []
-    for year_map in manifest.tile_bboxes_by_year.values():
-        for bbox_value in year_map.values():
-            if len(bbox_value) != 4:
-                continue
-            try:
-                samples.append(tuple(float(v) for v in bbox_value))
-            except Exception:
-                continue
-            if len(samples) >= 25:
-                break
-        if len(samples) >= 25:
-            break
-
-    if not samples:
-        return False
-
-    swapped_better = 0
-    for sample in samples:
-        normal_overlap = _bbox_overlap_area(sample, request_bbox)
-        swapped_overlap = _bbox_overlap_area(_swap_bbox_axes(sample), request_bbox)
-        if swapped_overlap > normal_overlap:
-            swapped_better += 1
-
-    return swapped_better > (len(samples) // 2)
+    samples = collect_tile_bbox_samples(manifest.tile_bboxes_by_year)
+    return tile_bboxes_look_swapped_vs_project(samples, request_bbox)
 
 
 def _can_reuse_index(manifest: IndexManifest, config: RunConfig) -> bool:
@@ -114,7 +70,7 @@ def _can_reuse_index(manifest: IndexManifest, config: RunConfig) -> bool:
         return False
     if config.provider == "geoportal":
         return (
-            manifest.wfs_bbox_axes_swapped == config.experimental_wfs_swap_bbox_axes
+            manifest.wfs_bbox_axes_swapped == wfs_query_axes_swapped(config.srs)
             and not _index_manifest_has_swapped_tile_bboxes(manifest)
         )
     return True

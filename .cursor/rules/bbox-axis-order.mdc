@@ -1,0 +1,34 @@
+---
+description: Bbox axis-order authority — project vs WFS query conventions
+globs: src/satmap_dataset/geo/**,src/satmap_dataset/pipeline/index_builder.py,src/satmap_dataset/pipeline/run_all.py,src/satmap_dataset/geoportal/**,src/satmap_dataset/pipeline/dem*.py,src/satmap_dataset/pipeline/render.py,src/satmap_dataset/cli.py
+alwaysApply: false
+---
+
+# Bbox axis order
+
+**Single authority:** `src/satmap_dataset/geo/bbox.py`
+
+## Project convention (config, manifests, CLI `--bbox`, render target grid)
+
+`xmin,ymin,xmax,ymax` in logical (x,y) order. For EPSG:2180: **(easting, northing)**.
+
+Do not add implicit SRS-keyed swaps in cli.py or render.py.
+
+## WFS / GUGiK skorowidz query
+
+OGC WFS `BBOX` uses CRS authority axis order. EPSG:2180 authority order is (northing, easting).
+
+Use `geo.bbox.wfs_query_bbox_str(project_bbox, srs)` at every WFS query boundary.
+Use `geo.bbox.wfs_query_axes_swapped(srs)` for manifest `wfs_bbox_axes_swapped`.
+
+## Deprecated
+
+`experimental_wfs_swap_bbox_axes` is ignored for EPSG:2180 (auto-swap). Do not reintroduce compensating swap/unswap pairs.
+
+## Separate concern: TIFF georef
+
+Downloaded tile tie points may be axis-swapped vs project order. Render infers `source_axis_mode` (`normal`/`swapped`) from georef — not bbox strings. Do not conflate with `geo.bbox`.
+
+## Feature bbox normalization
+
+`geoportal/wfs_client.py` normalizes per-feature bboxes to project order via overlap against the WFS query bbox. Stored `tile_bboxes_by_year` must be project-order.
