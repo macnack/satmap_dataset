@@ -4,6 +4,7 @@ import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from satmap_dataset.geo.bbox import overlap_area, parse, swap_axes_tuple
 from satmap_dataset.geoportal.http import RetryPolicy, request_with_retry
 from satmap_dataset.models import YearStatus
 
@@ -130,35 +131,6 @@ def _is_grid_compatible_with_srs(uklad_xy: str | None, srs: str) -> bool:
         return "PL-1992" in uklad_xy.strip().upper()
     return True
 
-
-def _parse_bbox_str(value: str) -> tuple[float, float, float, float]:
-    parts = [float(part.strip()) for part in value.split(",")]
-    if len(parts) != 4:
-        raise ValueError("bbox must have format xmin,ymin,xmax,ymax")
-    min_x, min_y, max_x, max_y = parts
-    if min_x >= max_x or min_y >= max_y:
-        raise ValueError("bbox must satisfy xmin<xmax and ymin<ymax")
-    return min_x, min_y, max_x, max_y
-
-
-def _bbox_overlap_area(
-    a: tuple[float, float, float, float],
-    b: tuple[float, float, float, float],
-) -> float:
-    min_x = max(a[0], b[0])
-    min_y = max(a[1], b[1])
-    max_x = min(a[2], b[2])
-    max_y = min(a[3], b[3])
-    if min_x >= max_x or min_y >= max_y:
-        return 0.0
-    return (max_x - min_x) * (max_y - min_y)
-
-
-def _swap_bbox_axes(
-    bbox: tuple[float, float, float, float],
-) -> tuple[float, float, float, float]:
-    min_x, min_y, max_x, max_y = bbox
-    return min_y, min_x, max_y, max_x
 
 
 def _extract_feature_bbox(feature: ET.Element) -> tuple[float, float, float, float] | None:
@@ -301,7 +273,7 @@ async def get_year_tiles(
     tiles: dict[str, str] = {}
     tile_bboxes: dict[str, list[float]] = {}
     tile_acquisition: dict[str, dict[str, int | str | float | None]] = {}
-    request_bbox = _parse_bbox_str(bbox)
+    request_bbox = parse(bbox).as_tuple()
     tile_overlap_by_id: dict[str, float] = {}
     tile_color_priority_by_id: dict[str, int] = {}
     incompatible_grid_count = 0
@@ -360,9 +332,9 @@ async def get_year_tiles(
             normalized_bbox = feature_bbox
             overlap = -1.0
             if feature_bbox is not None:
-                normal_overlap = _bbox_overlap_area(feature_bbox, request_bbox)
-                swapped_bbox = _swap_bbox_axes(feature_bbox)
-                swapped_overlap = _bbox_overlap_area(swapped_bbox, request_bbox)
+                normal_overlap = overlap_area(feature_bbox, request_bbox)
+                swapped_bbox = swap_axes_tuple(feature_bbox)
+                swapped_overlap = overlap_area(swapped_bbox, request_bbox)
                 if swapped_overlap > normal_overlap:
                     normalized_bbox = swapped_bbox
                     overlap = swapped_overlap

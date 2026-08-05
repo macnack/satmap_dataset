@@ -106,6 +106,19 @@ raw-export-location-json location_json="configs/run/locations/poznan.json" base_
 raw-export-all-json locations_dir="configs/run/locations" base_json="configs/run/base.json" continue_on_error="--continue-on-error":
   root="${SATMAP_LOCATIONS_ROOT:-./configs/run}"; dir="{{locations_dir}}"; dir="${dir#locations_dir=}"; base="{{base_json}}"; base="${base#base_json=}"; if [[ "$dir" != /* && "$dir" != */* ]]; then dir="$root/$dir"; fi; python -m satmap_dataset.cli raw-export-all-location-json --locations-dir "$dir" --base-json "$base" {{continue_on_error}}
 
+# gmix step 1: index + download only (no render) for one location — feeds world_window raw-export.
+gmix-download location_json="configs/run/locations/wroclaw_15km2.json" base_json="configs/run/base.json":
+  loc="{{location_json}}"; loc="${loc#location_json=}"; base="{{base_json}}"; base="${base#base_json=}"; name="$(basename "$loc" .json)"; mkdir -p configs/run/generated; python scripts/merge_json_config.py --base "$base" --override "$loc" --out "configs/run/generated/${name}.run.json"; python -m satmap_dataset.cli index-json "configs/run/generated/${name}.run.json"; python -m satmap_dataset.cli download-json "configs/run/generated/${name}.run.json"
+
+# gmix step 3: flatten world_window cells into ~/Github/sat_data/<provider>_<area>_<cellkey>_gmix.
+gmix-flatten location_json="configs/run/locations/wroclaw_15km2.json" link_mode="copy" dest="":
+  loc="{{location_json}}"; loc="${loc#location_json=}"; lm="{{link_mode}}"; lm="${lm#link_mode=}"; d="{{dest}}"; d="${d#dest=}"; extra=""; if [[ -n "$d" ]]; then extra="--dest $d"; fi; python scripts/flatten_gmix.py --location-json "$loc" --link-mode "$lm" $extra
+
+# Full gmix pipeline for one location: index+download -> world_window raw-export -> flatten to sat_data.
+# The location JSON must set provider/cell_mode=world_window/equalize_gsd (see configs/run/locations/wroclaw_15km2.json).
+gmix location_json="configs/run/locations/wroclaw_15km2.json" base_json="configs/run/base.json" link_mode="copy":
+  loc="{{location_json}}"; loc="${loc#location_json=}"; base="{{base_json}}"; base="${base#base_json=}"; lm="{{link_mode}}"; lm="${lm#link_mode=}"; just gmix-download location_json="$loc" base_json="$base"; just raw-export-location-json location_json="$loc" base_json="$base"; just gmix-flatten location_json="$loc" link_mode="$lm"
+
 # Build the cross-location split test_manifest.yaml consumed by sat_roma
 raw-test-manifest min_years="2":
   my="{{min_years}}"; my="${my#min_years=}"; python -m satmap_dataset.cli raw-test-manifest --min-years "$my"

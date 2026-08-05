@@ -5,12 +5,22 @@ from typing import Any
 
 from satmap_dataset.geoportal.http import RetryPolicy, request_with_retry
 
+# Verified live 2026-08-01. The two GUGiK services are NOT symmetric: NMT is served
+# from a `...FormatTIFF` path publishing `_TIFF`-suffixed coverages, while the NMPT
+# `...FormatTIFF` path now 404s (even for GetCapabilities) and the working service is
+# `DigitalSurfaceModel` with unsuffixed coverage ids. Hence the per-product template
+# below. Both accept `FORMAT=image/tiff`, but note that the NMPT service answers it
+# with a 3-band **Byte** raster — elevations rounded to 1 m (checked against the same
+# window in `image/x-aaigrid`: |diff| p95 = 0.47 m) on a 0.5 m grid. Request
+# `options={"format": "image/x-aaigrid"}` when float precision matters; it is roughly
+# 20x larger on the wire.
 DEFAULT_ENDPOINTS = {
     "nmt": "https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/GRID1/WCS/DigitalTerrainModelFormatTIFF",
-    "nmpt": "https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMPT/GRID1/WCS/DigitalSurfaceModelFormatTIFF",
+    "nmpt": "https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMPT/GRID1/WCS/DigitalSurfaceModel",
 }
 _PRODUCT_PREFIX = {"nmt": "DTM", "nmpt": "DSM"}
 _DATUM_TOKEN = {"evrf2007": "PL-EVRF2007-NH", "kron86": "PL-KRON86-NH"}
+_COVERAGE_ID_TEMPLATE = {"nmt": "{prefix}_{datum}_TIFF", "nmpt": "{prefix}_{datum}"}
 
 
 def endpoint_url(product: str, options: dict[str, Any] | None = None) -> str:
@@ -25,9 +35,11 @@ def endpoint_url(product: str, options: dict[str, Any] | None = None) -> str:
 
 def coverage_id(product: str, datum: str, options: dict[str, Any] | None = None) -> str:
     options = options or {}
-    template = str(options.get("coverage_id_template", "{prefix}_{datum}_TIFF"))
     if product not in _PRODUCT_PREFIX:
         raise ValueError(f"Unknown product {product!r}; expected one of {sorted(_PRODUCT_PREFIX)}")
+    template = str(
+        options.get("coverage_id_template", _COVERAGE_ID_TEMPLATE[product])
+    )
     if datum not in _DATUM_TOKEN:
         raise ValueError(f"Unknown datum {datum!r}; expected one of {sorted(_DATUM_TOKEN)}")
     return template.format(prefix=_PRODUCT_PREFIX[product], datum=_DATUM_TOKEN[datum])

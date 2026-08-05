@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 
 from satmap_dataset.config import DemConfig
+from satmap_dataset.geo.bbox import wfs_query_bbox_str
 from satmap_dataset.geoportal import dem_skorowidz_client
 from satmap_dataset.geoportal.http import RetryPolicy
 from satmap_dataset.models import DemProductAsset, DemYearAsset
@@ -160,14 +161,10 @@ async def _run_async(config: DemConfig) -> tuple[int, Path]:
     bbox = dem._parse_bbox(config.bbox)
     requested = config.requested_years
     options = dict(config.provider_options)
-    # The GUGiK NMT/NMPT skorowidz WFS expects the BBOX in the CRS-defined axis
-    # order, which for EPSG:2180 is (Y, X). Querying in x,y order returns the
-    # wrong tiles (or none). Swap by default for EPSG:2180; overridable.
-    swap_axes = bool(
-        options.get("wfs_swap_bbox_axes", config.srs.strip().upper() == "EPSG:2180")
-    )
-    xmin, ymin, xmax, ymax = bbox
-    query_bbox = f"{ymin},{xmin},{ymax},{xmax}" if swap_axes else config.bbox
+    if options.get("wfs_swap_bbox_axes") is False:
+        query_bbox = config.bbox
+    else:
+        query_bbox = wfs_query_bbox_str(config.bbox, config.srs)
 
     product_assets: list[DemProductAsset] = []
     years_skipped: dict[int, str] = {}

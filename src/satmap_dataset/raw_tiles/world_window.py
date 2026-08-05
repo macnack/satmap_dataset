@@ -27,9 +27,9 @@ from pathlib import Path
 import pyvips
 
 from satmap_dataset.raw_tiles.core import (
+    Cell,
     GeoTransform,
     cell_key,
-    derive_cell_grid,
     min_coverage_for_epsg,
     provider_for_epsg,
     read_tile_info,
@@ -97,10 +97,57 @@ def _equalize_to_grid(img: "pyvips.Image", gsd: float, res: float, tw: int, th: 
     return out, method
 
 
+def _derive_cell_grid(tiles: list, cell_size_m: "float | None" = None,
+                      rel_tol: float = 0.02, abs_tol_m: float = 5.0) -> list:
+    """Cell grid anchored to tile origins, tolerant of godło footprint jitter.
+
+    Like `core.derive_cell_grid` but the same-nominal-size match uses a relative
+    tolerance (``rel_tol``, at least ``abs_tol_m``) instead of a hard 1 m. Real
+    Polish godło sheets at one nominal scale vary by a few metres in EPSG:2180
+    extent, so a 1 m match keeps only the single tile that equals the smallest
+    footprint and collapses a whole grid to one cell. Near-identical origins are
+    de-duplicated downstream by `cell_key` (metre rounding).
+    """
+    if cell_size_m is not None:
+        w = h = float(cell_size_m)
+    else:
+        base = min(tiles, key=lambda t: t.width_m * t.height_m)
+        w, h = base.width_m, base.height_m
+    tol_w = max(abs_tol_m, w * rel_tol)
+    tol_h = max(abs_tol_m, h * rel_tol)
+    # De-duplicate tile origins that differ only by sub-grid jitter (same godło
+    # sheet across years drifts a few metres). Snap origins to a coarse bucket
+    # well below the inter-cell spacing so distinct sheets stay separate.
+    snap = max(50.0, min(w, h) * 0.05)
+    seen: dict = {}
+    for t in tiles:
+        if abs(t.width_m - w) <= tol_w and abs(t.height_m - h) <= tol_h:
+            ok = (round(t.gt.ulx / snap), round(t.gt.uly / snap))
+            seen.setdefault(ok, Cell(t.gt.ulx, t.gt.uly, w, h))
+    return list(seen.values())
+
+
+def _aoi_overlap_frac(win: tuple, aoi: tuple) -> float:
+    """Fraction of a window's area that falls inside the AOI bbox.
+
+    ``win`` is ``(ulx, uly, w_m, h_m, res)``; ``aoi`` is ``(xmin, ymin, xmax,
+    ymax)`` in the same CRS as the tiles.
+    """
+    ulx, uly, w_m, h_m, _ = win
+    x0, y0, x1, y1 = ulx, uly - h_m, ulx + w_m, uly
+    ax0, ay0, ax1, ay1 = aoi
+    ov_w = max(0.0, min(x1, ax1) - max(x0, ax0))
+    ov_h = max(0.0, min(y1, ay1) - max(y0, ay0))
+    area = (x1 - x0) * (y1 - y0)
+    return (ov_w * ov_h) / area if area > 0 else 0.0
+
+
 def ingest_area_world_window(src_area: Path, out_root: Path, registry: dict, *,
                              cell_size_m: "float | None" = None,
                              min_coverage: "float | None" = None,
-                             equalize_gsd: bool = True) -> dict:
+                             equalize_gsd: bool = True,
+                             aoi_bbox: "tuple | None" = None,
+                             min_aoi_overlap: float = 0.25) -> dict:
     """Mixed-GSD-aware ingest. Writes co-registered season stacks
     ``<out_root>/<provider>/<area>/<cellkey>/year_YYYY.tif`` (+ tfw/prj).
 
@@ -112,6 +159,12 @@ def ingest_area_world_window(src_area: Path, out_root: Path, registry: dict, *,
     resampling), so years remain co-registered geographically but differ in
     pixel dimensions. Returns a manifest dict shaped like `core.ingest_area`'s,
     with extra per-season `native_gsd`/`window_gsd`/`dims`/`resample`.
+
+    When ``aoi_bbox`` (xmin, ymin, xmax, ymax, tile CRS) is given, cells whose
+    window overlaps the AOI by less than ``min_aoi_overlap`` of their own area
+    are skipped — godło sheets over-cover, producing cells outside the AOI. As a
+    safety net against a wrong-CRS bbox, if the filter would drop *every* cell it
+    is ignored (all cells kept).
     """
     tiles = [read_tile_info(p) for p in sorted(src_area.glob("*/*.tif"))
              if _YEAR_DIR_RE.match(p.parent.name)]
@@ -121,7 +174,7 @@ def ingest_area_world_window(src_area: Path, out_root: Path, registry: dict, *,
     provider = provider_for_epsg(epsg, registry)
     mc = min_coverage if min_coverage is not None else min_coverage_for_epsg(epsg, registry)
     out_area = out_root / provider / src_area.name
-    cells = derive_cell_grid(tiles, cell_size_m)
+    cells = _derive_cell_grid(tiles, cell_size_m)
     by_year: dict = defaultdict(list)
     for t in tiles:
         by_year[t.year].append(t)
@@ -134,6 +187,8 @@ def ingest_area_world_window(src_area: Path, out_root: Path, registry: dict, *,
     manifest: dict = {"provider": provider, "area": src_area.name, "epsg": epsg,
                       "cell_size_m": [round(cells[0].w_m, 3), round(cells[0].h_m, 3)] if cells else None,
                       "locations": {}}
+    # Gather candidate windows first (cheap: metadata only, no pixel I/O).
+    planned: list = []
     for key, cell in spots.items():
         cx, cy = cell.ulx + cell.w_m / 2.0, cell.uly - cell.h_m / 2.0
         chosen: dict = {}
@@ -146,6 +201,16 @@ def ingest_area_world_window(src_area: Path, out_root: Path, registry: dict, *,
         win = common_window(chosen)
         if win is None:
             continue
+        planned.append((key, chosen, win))
+
+    # AOI clip: godło sheets over-cover, so drop cells that barely intersect the
+    # AOI. Ignore the filter if it would drop everything (e.g. wrong-CRS bbox).
+    if aoi_bbox is not None:
+        kept = [p for p in planned if _aoi_overlap_frac(p[2], aoi_bbox) >= min_aoi_overlap]
+        if kept:
+            planned = kept
+
+    for key, chosen, win in planned:
         ulx, uly, w_m, h_m, res = win
         tw, th = round(w_m / res), round(h_m / res)  # shared equal-dim target
         loc_dir = out_area / key

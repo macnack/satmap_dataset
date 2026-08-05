@@ -43,3 +43,13 @@ def test_get_provider_returns_lroc_nac() -> None:
     assert isinstance(provider, Provider)
     assert provider.name == "lroc_nac"
     assert provider.default_target_srs == "IAU_2015:30100"
+
+
+def test_get_provider_returns_nls() -> None:
+    from satmap_dataset.providers.nls import NlsProvider
+
+    provider = get_provider("nls")
+    assert isinstance(provider, NlsProvider)
+    assert isinstance(provider, Provider)
+    assert provider.name == "nls"
+    assert provider.default_target_srs == "EPSG:3067"

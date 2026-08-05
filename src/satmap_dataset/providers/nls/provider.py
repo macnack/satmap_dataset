@@ -6,10 +6,10 @@ import math
 from pathlib import Path
 from typing import Any
 
-import aiofiles
 import httpx
 
 from satmap_dataset.config import DownloadConfig, IndexConfig
+from satmap_dataset.io.atomic import part_path_for, unlink_quiet, write_stream_atomic
 from satmap_dataset.models import (
     DatasetManifest,
     IndexManifest,
@@ -17,6 +17,7 @@ from satmap_dataset.models import (
     YearStatus,
 )
 from satmap_dataset.pipeline.validator import evaluate_year_policy
+from satmap_dataset.providers.base import Provider
 from satmap_dataset.providers.nls import oapif
 from satmap_dataset.providers.nls.auth import resolve_api_key
 from satmap_dataset.providers.nls.wcs import (
@@ -245,20 +246,13 @@ async def _download_one(
 ) -> bool:
     attempts = max(1, retries + 1)
     request_url = _with_api_key(url, api_key) if api_key else url
-    # Stream into a sibling .part file and only rename into place on success.
-    # A network error mid-stream must never leave a truncated .tif behind: the
-    # download reuse check treats any non-empty file as a finished asset, so a
-    # partial file would silently poison the next run.
-    part_path = output_path.with_name(output_path.name + ".part")
+    part_path = part_path_for(output_path)
     try:
         for attempt in range(1, attempts + 1):
             try:
                 async with client.stream("GET", request_url) as response:
                     response.raise_for_status()
-                    async with aiofiles.open(part_path, "wb") as fp:
-                        async for chunk in response.aiter_bytes():
-                            await fp.write(chunk)
-                part_path.replace(output_path)
+                    await write_stream_atomic(output_path, response)
                 return True
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code in (400, 401, 403, 404):
@@ -274,13 +268,7 @@ async def _download_one(
                 await asyncio.sleep(0.5 * attempt)
         return False
     finally:
-        # Any failure path leaves a stale partial — drop it so the reuse check
-        # can't mistake it for a cache hit on the next run.
-        if part_path.exists():
-            try:
-                part_path.unlink()
-            except OSError:
-                pass
+        unlink_quiet(part_path)
 
 
 def _write_failed_manifest(config: IndexConfig, error: str) -> None:
@@ -305,7 +293,7 @@ def _write_failed_manifest(config: IndexConfig, error: str) -> None:
     config.output_json.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
 
 
-class NlsProvider:
+class NlsProvider(Provider):
     name = "nls"
     default_target_srs = "EPSG:3067"
 

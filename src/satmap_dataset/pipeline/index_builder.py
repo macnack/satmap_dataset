@@ -9,6 +9,7 @@ import logging
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 
 from satmap_dataset.config import IndexConfig
+from satmap_dataset.geo.bbox import wfs_query_axes_swapped, wfs_query_bbox_str
 from satmap_dataset.geoportal.http import RetryPolicy
 from satmap_dataset.geoportal.wfs_client import get_capabilities, get_year_tiles
 from satmap_dataset.models import (
@@ -54,13 +55,6 @@ def _write_json(path: Path, payload: IndexManifest | YearAvailabilityReport) -> 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(payload.model_dump_json(indent=2), encoding="utf-8")
 
-
-def _swap_bbox_axes_str(bbox: str) -> str:
-    parts = [float(part.strip()) for part in bbox.split(",")]
-    if len(parts) != 4:
-        raise ValueError("bbox must have format xmin,ymin,xmax,ymax")
-    min_x, min_y, max_x, max_y = parts
-    return f"{min_y},{min_x},{max_y},{max_x}"
 
 
 async def _probe_years_wfs_async(
@@ -150,17 +144,16 @@ def run(config: IndexConfig) -> tuple[int, Path]:
         config.min_years,
     )
     run_parameters = config.model_dump(mode="json")
-    bbox_for_wfs = config.bbox
-    wfs_bbox_axes_swapped = False
+    bbox_for_wfs = wfs_query_bbox_str(config.bbox, config.srs)
+    wfs_bbox_axes_swapped = wfs_query_axes_swapped(config.srs)
     if config.experimental_wfs_swap_bbox_axes:
-        # Legacy Geoportal clients sometimes expected WFS BBOX in Y/X order.
-        # Keep this as explicit opt-in so users can force compatibility when needed.
-        bbox_for_wfs = _swap_bbox_axes_str(config.bbox)
-        wfs_bbox_axes_swapped = True
-        logger.warning(
-            "Index: experimental_wfs_swap_bbox_axes enabled; querying WFS with swapped axis order bbox=%s",
-            bbox_for_wfs,
+        warnings_prefix: list[str] = []
+        warnings_prefix.append(
+            "experimental_wfs_swap_bbox_axes is deprecated and ignored; "
+            "EPSG:2180 WFS queries use authority axis order automatically."
         )
+    else:
+        warnings_prefix = []
     requested_years = config.requested_years
     probe_result = probe_years_wfs_with_tiles(
         aoi=bbox_for_wfs,
@@ -184,10 +177,7 @@ def run(config: IndexConfig) -> tuple[int, Path]:
     )
     warnings = list(policy.warnings)
     errors = list(policy.errors)
-    if config.experimental_wfs_swap_bbox_axes:
-        warnings.append(
-            "experimental_wfs_swap_bbox_axes enabled: WFS queried with swapped axis order ymin,xmin,ymax,xmax."
-        )
+    warnings.extend(warnings_prefix)
     warnings.append(
         "WFS tile index and WMS TIME rendering are not equivalent: WFS reflects downloadable source tiles per year, while WMS TIME can render years even when WFS returns no features."
     )

@@ -15,10 +15,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-import aiofiles
 import httpx
 
 from satmap_dataset.config import DownloadConfig, IndexConfig
+from satmap_dataset.io.atomic import write_stream_atomic
 from satmap_dataset.models import (
     IndexManifest,
     LayerManifest,
@@ -52,9 +52,7 @@ async def _download_asset_with_retry(
         try:
             async with client.stream("GET", url) as response:
                 response.raise_for_status()
-                async with aiofiles.open(output_path, "wb") as handle:
-                    async for chunk in response.aiter_bytes():
-                        await handle.write(chunk)
+                await write_stream_atomic(output_path, response)
             return True
         except httpx.HTTPStatusError as exc:
             logger.warning("LROC NAC download attempt=%s status=%s url=%s", attempt, exc.response.status_code, url)

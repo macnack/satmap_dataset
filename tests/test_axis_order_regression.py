@@ -11,7 +11,7 @@ from satmap_dataset.models import IndexManifest, YearStatus
 from satmap_dataset.pipeline import index_builder
 
 
-def test_index_swaps_bbox_axis_order_when_legacy_swap_flag_is_set(monkeypatch, tmp_path: Path) -> None:
+def test_index_swaps_bbox_axis_order_for_epsg2180_wfs_query(monkeypatch, tmp_path: Path) -> None:
     captured: dict[str, str] = {}
 
     def fake_probe(aoi: str, year_start: int, year_end: int, srs: str):
@@ -39,7 +39,7 @@ def test_index_swaps_bbox_axis_order_when_legacy_swap_flag_is_set(monkeypatch, t
         bbox=bbox,
         srs="EPSG:2180",
         strict_years=False,
-        experimental_wfs_swap_bbox_axes=True,
+        experimental_wfs_swap_bbox_axes=False,
         min_years=1,
         output_json=tmp_path / "index_manifest.json",
         year_availability_output_json=tmp_path / "year_availability_report.json",
@@ -52,5 +52,37 @@ def test_index_swaps_bbox_axis_order_when_legacy_swap_flag_is_set(monkeypatch, t
     assert captured["aoi"] == "504900.0,359700.0,506900.0,361700.0"
     assert manifest.wfs_bbox_axes_swapped is True
     assert manifest.run_parameters["bbox"] == bbox
-    assert manifest.run_parameters["experimental_wfs_swap_bbox_axes"] is True
-    assert any("swapped axis order" in warning for warning in manifest.warnings)
+
+
+def test_index_warns_when_legacy_swap_flag_is_set(monkeypatch, tmp_path: Path) -> None:
+    def fake_probe(aoi: str, year_start: int, year_end: int, srs: str):
+        statuses = [
+            YearStatus(
+                year=2023,
+                typename_exists=True,
+                feature_count=1,
+                status="has_features",
+                reason=None,
+            )
+        ]
+        return statuses, {2023: {}}, {2023: {}}, {2023: {}}
+
+    monkeypatch.setattr(index_builder, "probe_years_wfs_with_tiles", fake_probe)
+
+    config = IndexConfig(
+        year_start=2023,
+        year_end=2023,
+        bbox="359700,504900,361700,506900",
+        srs="EPSG:2180",
+        strict_years=False,
+        experimental_wfs_swap_bbox_axes=True,
+        min_years=1,
+        output_json=tmp_path / "index_manifest.json",
+        year_availability_output_json=tmp_path / "year_availability_report.json",
+    )
+
+    exit_code, output_path = index_builder.run(config)
+    manifest = IndexManifest.model_validate_json(output_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert any("experimental_wfs_swap_bbox_axes is deprecated" in warning for warning in manifest.warnings)

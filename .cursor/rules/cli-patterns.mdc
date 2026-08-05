@@ -1,0 +1,27 @@
+---
+description: CLI boilerplate patterns — prefer tab-complete over agentic duplication
+globs: src/satmap_dataset/cli.py
+alwaysApply: false
+---
+
+# CLI patterns (`cli.py`)
+
+## Three flavors per stage
+
+1. Flag form (`index`, `download`, …)
+2. JSON form (`index-json`, …) — 1:1 onto Pydantic config
+3. Base+location form (`*-location-json`, `*-all-location-json`) — merge `base.json` + location JSON
+
+## Adding a new command flavor
+
+This file has ~26 `_build_*_config_from_base_and_location` helpers. **Prefer tab-completion** to extend an existing helper pattern — copy the nearest neighbor, tab through the field list. Avoid agent-generated bulk duplication across all three flavors unless all three are needed.
+
+Dispatch to stage `run()` functions or `get_provider(name)` — do not embed provider logic in CLI wrappers.
+
+## Location paths
+
+`_apply_location_paths_policy` derives `downloads_<slug>`, `rendered_<slug>`, `artifacts_<slug>` from `location_name`.
+
+## Tests
+
+CLI merge/build helpers are heavily tested in `tests/test_cli_json_params.py`. Run targeted pytest after CLI changes.

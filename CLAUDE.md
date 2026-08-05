@@ -56,7 +56,7 @@ Four stages, each implemented as `src/satmap_dataset/pipeline/<stage>.py` exposi
 
 `pipeline/run_all.py` orchestrates all four and is the entry point for the `run`, `run-json`, and `run-location-json` CLI commands. It implements **idempotent reuse**:
 
-- Index is reused if `_can_reuse_index` matches (year range, bbox, srs, strict/min flags) and tile bboxes don't appear axis-swapped.
+- Index is reused if `_can_reuse_index` matches (year range, bbox, srs, strict/min flags, provider) and tile bboxes don't appear axis-swapped.
 - Download is reused if `_can_reuse_download` matches mode/profile/`force_wms_years` and every asset path on disk still exists.
 - `run-all-location-json` skips a whole location when `<artifacts_dir>/validation_report.json` already shows `passed=true`.
 
@@ -81,7 +81,7 @@ The base+location merge logic lives in `_build_*_config_from_base_and_location` 
 
 Two mutually exclusive ways to specify the AOI:
 
-- `--bbox xmin,ymin,xmax,ymax` in the chosen `--srs` (default `EPSG:2180`, project axis order `x,y`).
+- `--bbox xmin,ymin,xmax,ymax` in the chosen `--srs` (default `EPSG:2180`, project axis order x,y = easting, northing).
 - Center mode: `--center-lat`/`--center-lon` (WGS84) plus `--square-km` (default `4.0` → 2 km × 2 km square). EPSG:2180 only.
 
 JSON inputs accept `center_lat`/`center_lon` plus either `square_km` or `area_km2` (mutually exclusive). Resolution goes through `_resolve_json_center_bbox` and uses `pyproj` if available, else shells out to the `proj` CLI — both are acceptable, but errors mention both. See `_lonlat_to_epsg2180` in `cli.py`.
@@ -95,6 +95,8 @@ When a config has `location_name` set, `_apply_location_paths_policy` derives `d
 The `raw-export` stage (`pipeline/raw_export.py`) turns native download tiles into the layout sat_roma's `raw_tile_pipeline` consumes: it lays `download_root/<year>/*.tif` into `<raw_root>/<provider>/<area>/<year>/` (symlink by default; `link_mode=copy` to materialise), then ingests co-located season-cell stacks `<raw_root>/<provider>/<area>/<cellkey>/year_YYYY.tif` (+ `.tfw`/`.prj`) with provider-aware coverage gating (geoportal `0.5`), and writes the per-area `manifest.yaml`. `raw-test-manifest` builds the cross-location split `test_manifest.yaml`. The ingestion core under `src/satmap_dataset/raw_tiles/` is a **ported copy** of sat_roma `romatch/datasets/raw_tiles.py` (drift-guarded by `tests/test_raw_tiles_core.py`); keep them in sync. `raw_root` defaults to `$SATMAP_RAW_ROOT` or `~/Github/sat_data_raw` — a single shared root, not per-location. CLI: `raw-export`, `raw-export-json`, `raw-export-location-json`, `raw-export-all-location-json`, `raw-test-manifest`; Justfile: `just raw-export-location-json`, `just raw-export-all-json`, `just raw-test-manifest`.
 
 **`cell_mode`** selects the ingest strategy. `footprint` (default) is the verbatim ported `core.ingest_area`: cells keyed on a single tile origin, one covering tile per cell. `world_window` (`raw_tiles/world_window.py`, satmap-only, **not** in sat_roma) handles **mixed-GSD areas**: per spot it snaps the intersection of every year's footprint to the **coarsest** grid present, lossless-crops each year to that identical window, and resamples every year to the coarse GSD so all years are co-registered **and** equal-dimension (one usable stack). The resample (`_equalize_to_grid`) picks the method by GSD ratio: **integer** ratio → exact box-average decimation, no interpolation (Geoportal 0.05→0.25 = 5×); **non-integer** ratio → anti-aliased Lanczos downscale to the coarsest GSD (Lantmäteriet 0.16→0.25 = 1.5625×); equal GSD → identity. `equalize_gsd` (CLI `--equalize-gsd/--raw-gsd`, default on) controls whether this resampling happens: with `--raw-gsd` each year keeps its **native GSD** — only the integer-pixel window crop, fully lossless, no resampling — so years stay co-registered geographically but differ in pixel dimensions (sat_roma's equal-dim split then picks the largest GSD group). Native hi-res also stays in the export `<year>/` folders; per-season `native_gsd`/`window_gsd`/`downsampled`/`resample`/`dims` record provenance. Window geometry uses the real geotransforms (no guessing). Verified: `poznan_15km2` (0.25+0.05 m, offset grids, 5× decimate) and `lulea` (0.25+0.16 m, aligned grids, Lanczos) each collapse to one equal-dim co-registered stack per cell.
+
+**`gmix` workflow** (producing the flat `~/Github/sat_data/<provider>_<area>_<cellkey>_gmix/` cells sat_roma trains on): the nested `world_window` cells must be flattened into that layout — there is no satmap stage for it (`gmix` is a sat_roma naming convention), so `scripts/flatten_gmix.py` (`--location-json` derives provider+area) copies `<raw_root>/<provider>/<area>/<cellkey>/` → `<dest>/<provider>_<area>_<cellkey>_gmix/` (default dest `~/Github/sat_data`). The full chain is **index + download (no render) → world_window raw-export → flatten**; render is skipped because these cells use native download tiles, and 15 km² hi-res downloads are ~20–30 GB. Justfile: `just gmix` (full chain), `just gmix-download` (index+download only), `just gmix-flatten`. The location JSON opts in with `provider` + `cell_mode: "world_window"` + `equalize_gsd: true` (see `configs/run/locations/wroclaw_15km2.json`).
 
 ### External services
 
@@ -127,4 +129,8 @@ Sample configs: `configs/run/lroc_nac_apollo17.{index,download}.json`.
 - Stage `run()` functions return `(exit_code, artifact_path)` and write a single JSON manifest. Don't return None or print the path elsewhere — the CLI wrapper relies on the tuple and the artifact path is the contract for shell composition.
 - New config fields must default-resolve cleanly when missing from `base.json` or a location JSON; existing generated configs in `configs/run/generated/` are checked in and act as fixtures.
 - The `mosaic` CLI command is a backwards-compatible alias for `render`. Don't reintroduce a separate mosaic stage.
-- `experimental_wfs_swap_bbox_axes` is a deprecated escape hatch for axis-order bugs; prefer fixing detection in `_index_manifest_has_swapped_tile_bboxes`.
+### bbox axis order
+
+**Authority:** `src/satmap_dataset/geo/bbox.py`. Project bboxes are always `(easting, northing)` for EPSG:2180. WFS/GUGiK skorowidz queries use `wfs_query_bbox_str()` (authority order). Render `source_axis_mode` handles swapped TIFF georef separately.
+
+- `experimental_wfs_swap_bbox_axes` is deprecated and ignored for EPSG:2180.

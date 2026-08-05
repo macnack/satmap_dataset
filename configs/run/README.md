@@ -128,3 +128,17 @@ Alias behavior for `locations_4`/`locations_2`:
 - Singular aliases like `location_9` also work and are mapped to `locations_9` when present.
 - If value is a path (contains `/` or starts with `/`), it is used as-is.
 - No manifest/registration file is required; folder name is enough.
+
+## Cross-GSD `gmix` Cells (sat_roma input)
+
+For locations that opt in to `provider` + `cell_mode: "world_window"` +
+`equalize_gsd: true` (e.g. `locations/wroclaw_15km2.json`), the `gmix` recipes
+build flat `~/Github/sat_data/<provider>_<area>_<cellkey>_gmix/` cells. This path
+**skips render** and works from native download tiles; see the "Cross-GSD `gmix`
+cells" section of the top-level `README.md` for details.
+
+```bash
+just gmix location_json=configs/run/locations/wroclaw_15km2.json   # full chain
+just gmix-download location_json=configs/run/locations/wroclaw_15km2.json   # index + download only
+just gmix-flatten location_json=configs/run/locations/wroclaw_15km2.json    # flatten to sat_data
+```

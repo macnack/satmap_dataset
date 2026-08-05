@@ -18,6 +18,49 @@ def _tile(ulx, uly, gsd, n, year):
     return TileInfo(None, n, n, GeoTransform(ulx, gsd, 0.0, uly, 0.0, -gsd), 2180, "wkt", year)
 
 
+def _tile_wh(ulx, uly, gsd, w, h, year):
+    return TileInfo(None, w, h, GeoTransform(ulx, gsd, 0.0, uly, 0.0, -gsd), 2180, "wkt", year)
+
+
+def test_derive_cell_grid_tolerates_godlo_size_jitter():
+    # Real geoportal godło sheets at one nominal size vary by a few metres in
+    # footprint (e.g. Wrocław: 2247..2251 x 2374..2376 m). The cell grid must
+    # group them into one 3x3 grid (9 cells), not collapse to the single tile
+    # that exactly matches the smallest footprint.
+    from satmap_dataset.raw_tiles.world_window import _derive_cell_grid
+
+    base_w, base_h, gsd = 2247.0, 2374.0, 0.25
+    tiles = []
+    for i in range(3):        # easting columns
+        for j in range(3):    # northing rows
+            ulx = 357772.0 + i * base_w
+            uly = 366303.0 - j * base_h
+            wpx = round((base_w + (i + j)) / gsd)  # +0..+4 m width jitter
+            hpx = round((base_h + j) / gsd)        # +0..+2 m height jitter
+            tiles.append(_tile_wh(ulx, uly, gsd, wpx, hpx, 2020))
+    cells = _derive_cell_grid(tiles)
+    assert len(cells) == 9, f"expected 9 cells across the 3x3 grid, got {len(cells)}"
+
+
+def test_derive_cell_grid_collapses_jittered_duplicate():
+    # Same godło sheet seen in two years with ~1 m origin jitter must be ONE cell.
+    from satmap_dataset.raw_tiles.world_window import _derive_cell_grid
+
+    a = _tile_wh(359960.0, 361611.0, 0.25, round(2247 / 0.25), round(2374 / 0.25), 2020)
+    b = _tile_wh(359960.5, 361612.0, 0.05, round(2247 / 0.05), round(2374 / 0.05), 2021)
+    assert len(_derive_cell_grid([a, b])) == 1
+
+
+def test_aoi_overlap_frac():
+    from satmap_dataset.raw_tiles.world_window import _aoi_overlap_frac
+
+    # window e[1000-1100] n[2000-2100] (w=h=100), res 0.25
+    win = (1000.0, 2100.0, 100.0, 100.0, 0.25)
+    assert _aoi_overlap_frac(win, (1050.0, 2050.0, 1200.0, 2200.0)) == pytest.approx(0.25)  # NE quarter
+    assert _aoi_overlap_frac(win, (1200.0, 2200.0, 1300.0, 2300.0)) == 0.0                  # disjoint
+    assert _aoi_overlap_frac(win, (900.0, 1900.0, 1200.0, 2200.0)) == pytest.approx(1.0)    # fully inside
+
+
 # ---- pure window math (mirrors the real Poznań translation: fine grid offset +0.05,-0.15) ----
 
 def test_common_window_snaps_to_coarse_grid_and_aligns_both():
