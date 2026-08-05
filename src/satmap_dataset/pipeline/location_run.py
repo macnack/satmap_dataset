@@ -7,6 +7,7 @@ from satmap_dataset.config import DemConfig, OsmConfig, RunConfig, ValidateConfi
 from satmap_dataset.layers import get_layer
 from satmap_dataset.models import LayerManifest
 from satmap_dataset.pipeline import validator
+from satmap_dataset.progress_report import report_log, report_progress
 
 logger = logging.getLogger("satmap_dataset.location_run")
 
@@ -37,6 +38,10 @@ def run_location(
     failure is never masked by an earlier one.
     """
     artifacts_dir = Path(artifacts_dir)
+    total_steps = 1 + int(run_dem and dem_config is not None) + int(run_osm and osm_config is not None) + int(validate)
+    step = 0
+    report_progress(step, total_steps, "RGB layer (index → download → render)…")
+    report_log("Starting RGB layer")
     rgb_layer = get_layer(f"{rgb_config.provider}_rgb")
     code, rgb_manifest = rgb_layer.produce(rgb_config, grid=None)
     rgb_output = artifacts_dir / "rgb_layer_manifest.json"
@@ -49,16 +54,25 @@ def run_location(
     overall = code
 
     if run_dem and dem_config is not None:
+        step += 1
+        report_progress(step, total_steps, "DEM layer…")
+        report_log("Starting DEM layer")
         dem_code, dem_manifest = get_layer("dem").produce(dem_config, grid)
         _write_manifest(dem_manifest, dem_config.output_json)
         overall = max(overall, dem_code)
 
     if run_osm and osm_config is not None:
+        step += 1
+        report_progress(step, total_steps, "OSM label layer…")
+        report_log("Starting OSM layer")
         osm_code, osm_manifest = get_layer("osm").produce(osm_config, grid)
         _write_manifest(osm_manifest, osm_config.output_json)
         overall = max(overall, osm_code)
 
     if validate:
+        step += 1
+        report_progress(step, total_steps, "Validating RGB output…")
+        report_log("Starting validation")
         validate_output = artifacts_dir / "validation_report.json"
         validate_config = ValidateConfig(
             dataset_manifest=rgb_output,
@@ -70,5 +84,6 @@ def run_location(
         validate_code, _ = validator.run(validate_config)
         overall = max(overall, validate_code)
 
+    report_progress(total_steps, total_steps, "Location run finished")
     logger.info("run_location: finished code=%s rgb=%s", overall, rgb_output)
     return overall, rgb_output

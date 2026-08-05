@@ -7,6 +7,14 @@ default:
 install:
   python -m pip install -e ".[dev]"
 
+# Install with Streamlit studio UI extras.
+install-studio:
+  python -m pip install -e ".[dev,studio]"
+
+# Launch the satmap-studio Streamlit UI.
+studio:
+  python -m satmap_dataset.cli studio
+
 # Run all tests.
 test:
   pytest

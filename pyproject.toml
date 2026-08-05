@@ -28,6 +28,11 @@ dev = [
   "pytest",
   "pytest-cov",
 ]
+studio = [
+  "streamlit>=1.30",
+  "streamlit-folium>=0.6",
+  "folium>=0.15",
+]
 
 [project.scripts]
 satmap-dataset = "satmap_dataset.cli:main"

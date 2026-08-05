@@ -20,6 +20,7 @@ from satmap_dataset.models import (
 )
 from satmap_dataset.pipeline.aoi_preview import write_aoi_preview_png, write_osm_preview_html
 from satmap_dataset.pipeline.validator import evaluate_year_policy
+from satmap_dataset.progress_report import report_log, report_progress
 
 logger = logging.getLogger("satmap_dataset.index")
 
@@ -68,8 +69,10 @@ async def _probe_years_wfs_async(
     dict[int, dict[str, dict[str, int | str | None]]],
 ]:
     logger.info("Index: probing WFS capabilities and yearly tiles for %d years", len(requested_years))
+    report_progress(0, len(requested_years), "WFS GetCapabilities…")
     retry_policy = RetryPolicy(max_attempts=10, backoff_seconds=1.2, jitter_seconds=0.8)
     _, year_to_typename = await get_capabilities(timeout=45.0, retry_policy=retry_policy)
+    report_log(f"WFS capabilities loaded ({len(year_to_typename)} year typenames)")
     results: list[YearStatus] = []
     tile_sources_by_year: dict[int, dict[str, str]] = {}
     tile_bboxes_by_year: dict[int, dict[str, list[float]]] = {}
@@ -82,7 +85,12 @@ async def _probe_years_wfs_async(
         transient=True,
     ) as progress:
         task_id = progress.add_task("index_years", total=len(requested_years))
-        for year in requested_years:
+        for index, year in enumerate(requested_years):
+            report_progress(
+                index,
+                len(requested_years),
+                f"Probing WFS year {year} ({index + 1}/{len(requested_years)})",
+            )
             # Geoportal WFS is sensitive to bursts even for sequential calls.
             await asyncio.sleep(random.uniform(0.6, 1.8))
             status, year_tiles, year_tile_bboxes, year_tile_acquisition = await get_year_tiles(
@@ -103,6 +111,10 @@ async def _probe_years_wfs_async(
                 status.status,
                 status.feature_count,
                 len(year_tiles),
+            )
+            report_log(
+                f"Year {year}: {status.status}, {status.feature_count} features, "
+                f"{len(year_tiles)} tiles"
             )
             progress.advance(task_id)
     return results, tile_sources_by_year, tile_bboxes_by_year, tile_acquisition_by_year
@@ -155,6 +167,7 @@ def run(config: IndexConfig) -> tuple[int, Path]:
     else:
         warnings_prefix = []
     requested_years = config.requested_years
+    report_progress(0, len(requested_years), "Starting WFS year probe…")
     probe_result = probe_years_wfs_with_tiles(
         aoi=bbox_for_wfs,
         year_start=config.year_start,
@@ -205,6 +218,7 @@ def run(config: IndexConfig) -> tuple[int, Path]:
     preview_warnings: list[str] = []
     preview_html_path = config.output_json.parent / "aoi_preview.html"
     preview_png_path = config.output_json.parent / "aoi_preview.png"
+    report_progress(len(requested_years), len(requested_years), "Writing AOI previews…")
     try:
         write_osm_preview_html(
             bbox=config.bbox,
@@ -237,6 +251,7 @@ def run(config: IndexConfig) -> tuple[int, Path]:
         len(common_tile_ids),
     )
 
+    report_progress(len(requested_years), len(requested_years), "Writing index manifests…")
     manifest = IndexManifest(
         year_start=config.year_start,
         year_end=config.year_end,

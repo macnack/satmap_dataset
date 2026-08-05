@@ -465,6 +465,27 @@ Sentinel-2 imagery is published under the
 [Copernicus open data licence](https://sentinels.copernicus.eu/web/sentinel/terms-conditions).
 Cite as: *Contains modified Copernicus Sentinel data [year]*.
 
+## Web UI (satmap-studio)
+
+Local Streamlit app for picking an AOI on OpenStreetMap, checking year/GSD
+availability, and running the full aligned stack (RGB + DEM + OSM) without
+hand-editing JSON configs.
+
+```bash
+python -m pip install -e ".[dev,studio]"
+just studio
+# or: python -m satmap_dataset.cli studio
+```
+
+Features:
+- Provider picker (Geoportal, Lantmäteriet, NLS, Sentinel-2) with credential fields
+- Click-to-set center on OSM map, area slider (km²), live bbox preview
+- Index-only availability probe with per-year GSD table
+- Full `location-run-json` equivalent plus optional raw-tile export
+- Save `configs/run/locations/<slug>.json` for CLI/`just` replay
+
+v1 does not include batch `run-all`, trajectory, or LROC NAC.
+
 ## Development checks
 
 ```bash

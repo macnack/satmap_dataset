@@ -9,6 +9,7 @@ from satmap_dataset.geo.bbox import parse as parse_project_bbox, wfs_query_bbox_
 from satmap_dataset.geoportal import dem_skorowidz_client
 from satmap_dataset.geoportal.http import RetryPolicy
 from satmap_dataset.models import DemAvailabilityEntry, DemAvailabilityReport
+from satmap_dataset.progress_report import report_log, report_progress
 
 logger = logging.getLogger("satmap_dataset.dem_availability")
 
@@ -89,6 +90,8 @@ async def _run_async(config: DemAvailabilityConfig) -> tuple[int, Path]:
     entries: list[DemAvailabilityEntry] = []
     errors: dict[str, str] = {}
 
+    # Plan work units for progress reporting.
+    plans: list[tuple[str, str, dict[int, str], list[int]]] = []
     for product in config.products:
         for datum in config.datums:
             combo = f"{product}|{datum}"
@@ -98,35 +101,53 @@ async def _run_async(config: DemAvailabilityConfig) -> tuple[int, Path]:
                 )
             except Exception as exc:  # noqa: BLE001 - record and continue
                 errors[combo] = str(exc)
+                report_log(f"DEM catalog error {combo}: {exc}")
                 continue
             years = sorted(year_to_typename)
             if year_filter is not None:
                 years = [y for y in years if y in set(year_filter)]
-            for year in years:
-                try:
-                    _status, tiles, tile_bboxes, tile_acq = await dem_skorowidz_client.tiles_for_year(
-                        product, datum, year, query_bbox, config.srs,
-                        year_to_typename=year_to_typename, options=options,
-                        timeout=config.timeout, retry_policy=retry_policy,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    errors[f"{combo}|{year}"] = str(exc)
-                    continue
-                pct = _coverage_pct(cov_aoi, [tuple(v) for v in tile_bboxes.values()])
-                dates = sorted({
-                    str(meta.get("acquisition_date"))
-                    for meta in tile_acq.values()
-                    if meta.get("acquisition_date")
-                })
-                entries.append(
-                    DemAvailabilityEntry(
-                        product=product, datum=datum, year=year,
-                        godla=sorted(tiles.keys()), tile_count=len(tiles),
-                        formats=_formats_from_urls(list(tiles.values())),
-                        coverage=_classify(pct), coverage_pct=pct,
-                        acquisition_dates=dates,
-                    )
+            plans.append((product, datum, year_to_typename, years))
+
+    total_steps = sum(len(years) for _, _, _, years in plans)
+    total_steps = max(total_steps, 1)
+    step = 0
+    report_progress(0, total_steps, "Starting DEM skorowidz availability probe…")
+
+    for product, datum, year_to_typename, years in plans:
+        combo = f"{product}|{datum}"
+        for year in years:
+            label = f"DEM {product}/{datum} year {year}"
+            report_progress(step, total_steps, label)
+            try:
+                _status, tiles, tile_bboxes, tile_acq = await dem_skorowidz_client.tiles_for_year(
+                    product, datum, year, query_bbox, config.srs,
+                    year_to_typename=year_to_typename, options=options,
+                    timeout=config.timeout, retry_policy=retry_policy,
                 )
+            except Exception as exc:  # noqa: BLE001
+                errors[f"{combo}|{year}"] = str(exc)
+                report_log(f"{label}: error {exc}")
+                step += 1
+                continue
+            pct = _coverage_pct(cov_aoi, [tuple(v) for v in tile_bboxes.values()])
+            dates = sorted({
+                str(meta.get("acquisition_date"))
+                for meta in tile_acq.values()
+                if meta.get("acquisition_date")
+            })
+            entries.append(
+                DemAvailabilityEntry(
+                    product=product, datum=datum, year=year,
+                    godla=sorted(tiles.keys()), tile_count=len(tiles),
+                    formats=_formats_from_urls(list(tiles.values())),
+                    coverage=_classify(pct), coverage_pct=pct,
+                    acquisition_dates=dates,
+                )
+            )
+            report_log(f"{label}: {len(tiles)} tiles, coverage {_classify(pct)} ({pct:g}%)")
+            step += 1
+
+    report_progress(total_steps, total_steps, "Writing DEM availability report…")
 
     full_options = [
         {"product": e.product, "datum": e.datum, "year": e.year}

@@ -74,7 +74,16 @@ def _print_availability_table(report) -> None:
         console.print(f"  [red]error:[/red] {combo}: {msg}")
 
 
-_CENTER_MODE_SUPPORTED_SRS = {"EPSG:2180", "EPSG:3006"}
+_CENTER_MODE_SUPPORTED_SRS = {"EPSG:2180", "EPSG:3006", "EPSG:3067"}
+
+
+def _center_mode_srs_supported(srs: str) -> bool:
+    normalized = srs.upper()
+    if normalized in _CENTER_MODE_SUPPORTED_SRS:
+        return True
+    if normalized.startswith("EPSG:326") or normalized.startswith("EPSG:327"):
+        return True
+    return False
 
 
 def _lonlat_to_target_srs(lon: float, lat: float, target_srs: str) -> tuple[float, float]:
@@ -157,10 +166,10 @@ def _resolve_bbox_input(
         if center_lat is None or center_lon is None:
             raise typer.BadParameter("Center mode requires both --center-lat and --center-lon.")
         normalized_srs = srs.upper()
-        if normalized_srs not in _CENTER_MODE_SUPPORTED_SRS:
+        if not _center_mode_srs_supported(normalized_srs):
             raise typer.BadParameter(
-                "Center mode currently supports only "
-                f"{sorted(_CENTER_MODE_SUPPORTED_SRS)}, got --srs {srs}."
+                "Center mode currently supports EPSG:2180, EPSG:3006, EPSG:3067, "
+                f"and WGS84 UTM zones (EPSG:326NN/327NN), got --srs {srs}."
             )
         try:
             if rect_supplied:
@@ -2104,6 +2113,38 @@ def trajectory_json_cmd(
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(2)
     _finish(code, path)
+
+
+@app.command("studio")
+def studio_command(
+    port: int = typer.Option(8501, help="Streamlit server port."),
+    host: str = typer.Option("localhost", help="Streamlit server host."),
+) -> None:
+    """Launch the satmap-studio Streamlit UI."""
+    import subprocess
+    import sys
+
+    app_path = Path(__file__).resolve().parent / "studio" / "app.py"
+    try:
+        import streamlit  # noqa: F401
+    except ImportError:
+        console.print(
+            "[red]studio extras not installed.[/red] Run: "
+            "python -m pip install -e '.[studio]'"
+        )
+        raise typer.Exit(code=2)
+    cmd = [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        str(app_path),
+        "--server.port",
+        str(port),
+        "--server.address",
+        host,
+    ]
+    raise typer.Exit(code=subprocess.call(cmd))
 
 
 def main() -> None:
