@@ -15,6 +15,22 @@ install-studio:
 studio:
   python -m satmap_dataset.cli studio
 
+# Install FastAPI web UI extras.
+install-web:
+  python -m pip install -e ".[dev,web]"
+
+# Build the Vite/React frontend into web-ui/dist (requires Node.js).
+web-build:
+  cd web-ui && npm install && npm run build
+
+# Launch satmap-web (API on :8787; serves web-ui/dist when built).
+web host="127.0.0.1" port="8787":
+  python -m satmap_dataset.cli web --host {{host}} --port {{port}}
+
+# Dev: API + Vite proxy (run `just web` in one terminal, this in another).
+web-dev:
+  cd web-ui && npm install && npm run dev
+
 # Run all tests.
 test:
   pytest

@@ -13,6 +13,7 @@ manifests at every stage.
 - Shared NN-ready grid (`RGB_U8` GeoTIFF) with Pydantic manifest contracts
 - Location JSON + `just` recipes for batch runs
 - Optional Streamlit UI (`satmap-studio`)
+- Optional browser UI (`satmap-web`: FastAPI + React)
 
 ## Provider maturity
 
@@ -127,7 +128,9 @@ python -m satmap_dataset.cli trajectory --track path/to/gps_001 --out trajectory
 python -m satmap_dataset.cli trajectory --track path/to/gps_001 --out trajectory_gps001 --download
 ```
 
-## Web UI
+## Web UIs
+
+**satmap-studio** (Streamlit — full operator console):
 
 ```bash
 python -m pip install -e ".[dev,studio]"
@@ -135,6 +138,18 @@ just studio
 ```
 
 Map AOI picker, year/GSD probe, location-run (RGB + DEM + OSM), optional raw-export.
+
+**satmap-web** (FastAPI + React — lightweight status / run viewport):
+
+```bash
+python -m pip install -e ".[dev,web]"
+just web-build          # once: builds web-ui/dist (needs Node.js)
+just web                # http://127.0.0.1:8787
+# or: python -m satmap_dataset.web --port 8787
+```
+
+For frontend hot-reload: run `just web` and `just web-dev` in two terminals
+(Vite proxies `/api` to :8787). Design notes: `docs/superpowers/specs/2026-10-03-web-ui-design.md`.
 
 ## Development
 

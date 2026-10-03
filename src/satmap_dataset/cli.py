@@ -2152,6 +2152,30 @@ def studio_command(
     raise typer.Exit(code=subprocess.call(cmd))
 
 
+@app.command("web")
+def web_command(
+    port: int = typer.Option(8787, help="satmap-web server port."),
+    host: str = typer.Option("127.0.0.1", help="satmap-web server host."),
+    reload: bool = typer.Option(False, "--reload", help="Auto-reload on code changes."),
+) -> None:
+    """Launch the satmap-web FastAPI + React UI."""
+    try:
+        import uvicorn  # noqa: F401
+        import fastapi  # noqa: F401
+    except ImportError:
+        console.print(
+            "[red]web extras not installed.[/red] Run: "
+            "python -m pip install -e '.[web]'"
+        )
+        raise typer.Exit(code=2)
+    from satmap_dataset.web.__main__ import main as web_main
+
+    args = ["--host", host, "--port", str(port)]
+    if reload:
+        args.append("--reload")
+    web_main(args)
+
+
 def main() -> None:
     configure_logging("INFO")
     app()
