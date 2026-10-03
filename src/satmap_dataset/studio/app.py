@@ -37,6 +37,16 @@ from satmap_dataset.studio.geo import (
     square_side_meters,
 )
 from satmap_dataset.studio.jobs import Job, JobStatus, migrate_job
+from satmap_dataset.studio.pipeline_dag import (
+    dag_html,
+    derive_pipeline_dag,
+    location_artifact_paths,
+)
+from satmap_dataset.studio.timeline import (
+    derive_year_timeline,
+    load_json_mapping,
+    timeline_html,
+)
 from satmap_dataset.studio.param_hints import (
     AREA_KM2,
     CENTER_LAT,
@@ -498,6 +508,57 @@ def _tab_settings() -> None:
         )
 
 
+def _current_slug() -> str:
+    return _slugify_location_name(st.session_state["location_name"])
+
+
+def _render_year_timeline_panel(
+    *,
+    index_payload: dict[str, Any] | None = None,
+    title: str = "Year timeline",
+) -> None:
+    """Horizontal year timeline from session range + on-disk / in-memory manifests."""
+    paths = location_artifact_paths(REPO_ROOT, _current_slug())
+    index_data = index_payload
+    if index_data is None:
+        index_data = load_json_mapping(paths["index_manifest"]) or load_json_mapping(
+            paths["year_availability"]
+        )
+    cells = derive_year_timeline(
+        year_start=int(st.session_state["year_start"]),
+        year_end=int(st.session_state["year_end"]),
+        index_payload=index_data,
+        download_payload=load_json_mapping(paths["download_manifest"]),
+        render_payload=load_json_mapping(paths["render_manifest"]),
+        download_root=paths["download_root"],
+        render_root=paths["render_root"],
+    )
+    html = timeline_html(cells, title=title)
+    if html:
+        st.markdown(html, unsafe_allow_html=True)
+
+
+def _render_pipeline_dag_panel() -> None:
+    """Stage DAG with status from artifacts + active job."""
+    paths = location_artifact_paths(REPO_ROOT, _current_slug())
+    job = _active_job()
+    job_running = bool(job and job.is_running())
+    dag = derive_pipeline_dag(
+        artifacts_dir=paths["artifacts_dir"],
+        dem_manifest=paths["dem_manifest"],
+        osm_manifest=paths["osm_manifest"],
+        run_dem=bool(st.session_state.get("run_dem", True)),
+        run_osm=bool(st.session_state.get("run_osm", True)),
+        validate=bool(st.session_state.get("validate", True)),
+        raw_export=bool(st.session_state.get("raw_export", False)),
+        job_name=job.name if job else None,
+        job_running=job_running,
+        progress_label=(job.state.progress_label if job else None) or None,
+    )
+    st.markdown(dag_html(dag, title="Pipeline"), unsafe_allow_html=True)
+    st.caption(f"Artifacts: `{paths['artifacts_dir']}`")
+
+
 def _show_index_report(report: YearAvailabilityReport | IndexManifest) -> None:
     st.write(f"**Passed:** {report.passed}")
     if report.errors:
@@ -536,6 +597,14 @@ def _show_index_report(report: YearAvailabilityReport | IndexManifest) -> None:
 
 def _tab_availability() -> None:
     st.subheader("Availability")
+    index_payload = None
+    cached = st.session_state.get("index_report")
+    if cached is not None:
+        index_payload = cached.model_dump(mode="json")
+    _render_year_timeline_panel(
+        index_payload=index_payload,
+        title="Year timeline (current location)",
+    )
     job = _active_job()
 
     if job and job.name in {"index", "dem_availability"} and job.is_running():
@@ -638,6 +707,9 @@ def _tab_availability() -> None:
 
 def _tab_run() -> None:
     st.subheader("Run & status")
+    st.markdown("### Run status")
+    _render_pipeline_dag_panel()
+    _render_year_timeline_panel(title="Year timeline")
     job = _active_job()
 
     if job and job.name == "location_run" and job.is_running():
