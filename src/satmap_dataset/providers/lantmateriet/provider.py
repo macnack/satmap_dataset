@@ -10,6 +10,10 @@ fallbacks for the bits that are typically secret or site-specific:
 - SATMAP_LANTMATERIET_WMS_URL
 - SATMAP_LANTMATERIET_WMS_LAYER
 - SATMAP_LANTMATERIET_API_KEY
+
+Optional DEM (Markhöjdmodell via STAC-höjd, not stac-bild):
+- SATMAP_LANTMATERIET_DEM_USERNAME / SATMAP_LANTMATERIET_DEM_PASSWORD
+- SATMAP_LANTMATERIET_STAC_HOJD_URL / SATMAP_LANTMATERIET_STAC_HOJD_COLLECTION
 """
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from satmap_dataset.config import DownloadConfig, IndexConfig
+from satmap_dataset.config import DemConfig, DownloadConfig, IndexConfig
 from satmap_dataset.geoportal.http import RetryPolicy
 from satmap_dataset.io.atomic import write_stream_atomic
 from satmap_dataset.models import (
@@ -378,6 +382,12 @@ def _filename_for_url(url: str, fallback: str) -> str:
 class LantmaterietProvider(Provider):
     name = "lantmateriet"
     default_target_srs = DEFAULT_TARGET_SRS
+
+    def dem(self, config: DemConfig) -> tuple[int, Path]:
+        """Optional Markhöjdmodell DTM via STAC-höjd (not ortofoto stac-bild)."""
+        from satmap_dataset.pipeline import dem_lantmateriet
+
+        return dem_lantmateriet.run(config)
 
     def index(self, config: IndexConfig) -> tuple[int, Path]:
         return asyncio.run(self._index_async(config))

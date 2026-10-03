@@ -408,10 +408,15 @@ def _tab_settings() -> None:
             index=0 if st.session_state["profile"] == "train" else 1,
             help=PROFILE,
         )
-        dem_supported = st.session_state["provider"] == "geoportal"
-        if not dem_supported:
+        dem_supported = st.session_state["provider"] in {"geoportal", "lantmateriet"}
+        if st.session_state["provider"] == "lantmateriet":
+            st.caption(
+                "Optional Swedish DEM: Markhöjdmodell via stac-hojd "
+                "(separate Geotorget product; not ortofoto STAC)."
+            )
+        elif not dem_supported:
             st.session_state["run_dem"] = False
-            st.caption("DEM layer is Geoportal-only (Polish NMT/NMPT).")
+            st.caption("DEM layer is unavailable for this provider.")
         st.session_state["run_dem"] = st.checkbox(
             "DEM layer",
             value=bool(st.session_state["run_dem"]) and dem_supported,

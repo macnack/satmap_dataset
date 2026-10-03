@@ -306,7 +306,7 @@ def build_dem_layer_manifest(
         layer="dem",
         role="dem",
         stage="dem",
-        provider="geoportal",
+        provider=config.provider,
         grid=_grid_to_reference(grid, config.srs),
         bands=[asset.product for asset in product_assets],
         years_requested=config.requested_years,
@@ -407,6 +407,10 @@ async def _run_async(config: DemConfig) -> tuple[int, Path]:
 
 
 def run(config: DemConfig) -> tuple[int, Path]:
+    if config.provider == "lantmateriet" or config.transport == "stac_hojd":
+        from satmap_dataset.pipeline import dem_lantmateriet
+
+        return dem_lantmateriet.run(config)
     if config.transport == "skorowidz":
         from satmap_dataset.pipeline import dem_skorowidz
 

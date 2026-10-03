@@ -370,12 +370,27 @@ class DemConfig(BaseModel):
     provider: str = PROVIDER_GEOPORTAL
     provider_options: dict[str, Any] = Field(default_factory=dict)
 
+    @model_validator(mode="before")
+    @classmethod
+    def apply_lantmateriet_dem_defaults(cls, data: Any) -> Any:
+        """Swedish DEM uses stac-hojd Markhöjdmodell (DTM), not Geoportal WCS."""
+        if not isinstance(data, dict):
+            return data
+        if data.get("provider") != PROVIDER_LANTMATERIET:
+            return data
+        out = dict(data)
+        out.setdefault("transport", "stac_hojd")
+        out.setdefault("vertical_datum", "rh2000")
+        out.setdefault("products", ["nmt"])
+        out.setdefault("srs", "EPSG:3006")
+        return out
+
     @field_validator("transport")
     @classmethod
     def validate_transport(cls, value: str) -> str:
         normalized = str(value).strip().lower()
-        if normalized not in {"wcs", "skorowidz"}:
-            raise ValueError("transport must be 'wcs' or 'skorowidz'")
+        if normalized not in {"wcs", "skorowidz", "stac_hojd"}:
+            raise ValueError("transport must be 'wcs', 'skorowidz', or 'stac_hojd'")
         return normalized
 
     @field_validator("bbox")
@@ -410,7 +425,7 @@ class DemConfig(BaseModel):
     @classmethod
     def validate_vertical_datum(cls, value: str) -> str:
         normalized = str(value).strip().lower()
-        allowed = {"evrf2007", "kron86"}
+        allowed = {"evrf2007", "kron86", "rh2000"}
         if normalized not in allowed:
             raise ValueError(f"vertical_datum must be one of {sorted(allowed)}")
         return normalized
@@ -433,6 +448,26 @@ class DemConfig(BaseModel):
                 raise ValueError("year_start and year_end are required when transport='skorowidz'")
             if self.year_end < self.year_start:
                 raise ValueError("year_end must be >= year_start")
+        if self.provider == PROVIDER_LANTMATERIET:
+            if self.transport != "stac_hojd":
+                raise ValueError(
+                    "provider='lantmateriet' DEM requires transport='stac_hojd' "
+                    "(Markhöjdmodell via api.lantmateriet.se/stac-hojd; not Geoportal WCS "
+                    "and not ortofoto stac-bild)"
+                )
+            if any(product != "nmt" for product in self.products):
+                raise ValueError(
+                    "Lantmäteriet Markhöjdmodell is a DTM only; use products=['nmt']. "
+                    "NMPT/DSM is not offered on this path."
+                )
+            if self.vertical_datum != "rh2000":
+                raise ValueError(
+                    "Lantmäteriet DEM elevations are RH2000; set vertical_datum='rh2000'"
+                )
+        elif self.transport == "stac_hojd":
+            raise ValueError("transport='stac_hojd' requires provider='lantmateriet'")
+        elif self.vertical_datum == "rh2000":
+            raise ValueError("vertical_datum='rh2000' is only valid for provider='lantmateriet'")
         return self
 
     @property

@@ -56,8 +56,9 @@ PROFILE = (
     "WMS fallback options, extra QC fields in the render manifest."
 )
 RUN_DEM = (
-    "Download ISOK NMT/NMPT elevation and align to the RGB ReferenceGrid "
-    "(same bbox, width, height as render output)."
+    "Elevation aligned to the RGB ReferenceGrid. Geoportal: ISOK NMT/NMPT via WCS. "
+    "Lantmäteriet (opt-in): Markhöjdmodell 1 m DTM via stac-hojd — requires a separate "
+    "Geotorget Markhöjdmodell Nedladdning subscription (not ortofoto STAC)."
 )
 RUN_OSM = (
     "Fetch OSM semantic labels (buildings, roads, paths, green, water) via Overpass "
