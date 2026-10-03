@@ -45,6 +45,11 @@ def test_sleep_and_paired_target_dims():
 def test_transport_default_and_enum():
     assert DemConfig(bbox="0,0,10,10").transport == "wcs"
     assert DemConfig(bbox="0,0,10,10", transport="skorowidz", year_start=2012, year_end=2019).transport == "skorowidz"
+    assert DemConfig(
+        bbox="600000,6500000,600200,6500200",
+        provider="lantmateriet",
+        transport="stac_hojd",
+    ).transport == "stac_hojd"
     with pytest.raises(ValidationError):
         DemConfig(bbox="0,0,10,10", transport="ftp")
 

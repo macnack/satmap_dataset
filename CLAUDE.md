@@ -124,6 +124,11 @@ distinct tile under its acquisition year — the multi-temporal axis);
 rasters — ISIS `cam2map` projection and render are a separate, deferred stage.
 Sample configs: `configs/run/lroc_nac_apollo17.{index,download}.json`.
 
+### Swedish DEM (optional, Lantmäteriet)
+
+Elevation for Sweden is **not** Geoportal WCS and **not** ortofoto `stac-bild`.
+Opt-in path: `DemConfig(provider="lantmateriet", transport="stac_hojd", products=["nmt"], vertical_datum="rh2000")` → `pipeline/dem_lantmateriet.py` searches `https://api.lantmateriet.se/stac-hojd/v1` (default collection `dtm-cog`, Markhöjdmodell 1 m COG). Asset download needs Geotorget **Markhöjdmodell Nedladdning** credentials (`SATMAP_LANTMATERIET_DEM_*` or shared `SATMAP_LANTMATERIET_*`). Studio leaves DEM off by default for Lantmäteriet.
+
 ### Profiles and modes
 
 - `mode`: `wfs_render` (WFS only), `wms_tiled` (WMS only — index step is stubbed via `_write_wms_only_index`), `hybrid` (default; WFS-first, WMS for missing years).

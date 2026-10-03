@@ -1,0 +1,305 @@
+{
+  "id": "658_67",
+  "bbox": [
+    17.98777943595573,
+    59.320358631755006,
+    18.17159292518451,
+    59.414181278360466
+  ],
+  "type": "Feature",
+  "links": [
+    {
+      "rel": "collection",
+      "type": "application/json",
+      "href": "https://api.lantmateriet.se/stac-hojd/v1/collections/dtm-cog"
+    },
+    {
+      "rel": "parent",
+      "type": "application/json",
+      "href": "https://api.lantmateriet.se/stac-hojd/v1/collections/dtm-cog"
+    },
+    {
+      "rel": "root",
+      "type": "application/json",
+      "href": "https://api.lantmateriet.se/stac-hojd/v1/"
+    },
+    {
+      "rel": "self",
+      "type": "application/geo+json",
+      "href": "https://api.lantmateriet.se/stac-hojd/v1/collections/dtm-cog/items/658_67"
+    },
+    {
+      "rel": "describedby",
+      "href": "https://www.lantmateriet.se/sv/geodata/vara-produkter/produktlista/markhojdmodell-nedladdning#anchor-2",
+      "type": "text/html",
+      "title": "Produktdokumentation Geotorget"
+    }
+  ],
+  "assets": {
+    "data": {
+      "href": "https://dl1.lantmateriet.se/hojd/data/grid/mhm/65_6/m658_67.tif",
+      "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+      "roles": [
+        "data"
+      ],
+      "title": "m658_67.tif",
+      "file:size": 258114330,
+      "proj:bbox": [
+        670000.0,
+        6580000.0,
+        680000.0,
+        6590000.0
+      ],
+      "proj:code": "EPSG:5845",
+      "proj:shape": [
+        10000,
+        10000
+      ],
+      "file:checksum": "1220f536905744c4d5c2bf280b06c69628c0fb6f88980ce2a8d91c6dbc503e02485e",
+      "proj:projjson": {
+        "id": {
+          "code": 5845,
+          "authority": "EPSG"
+        },
+        "name": "SWEREF99 TM + RH2000 height",
+        "type": "CompoundCRS",
+        "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+        "components": [
+          {
+            "name": "SWEREF99 TM",
+            "type": "ProjectedCRS",
+            "base_crs": {
+              "id": {
+                "code": 4619,
+                "authority": "EPSG"
+              },
+              "name": "SWEREF99",
+              "type": "GeographicCRS",
+              "datum": {
+                "name": "SWEREF99",
+                "type": "GeodeticReferenceFrame",
+                "ellipsoid": {
+                  "name": "GRS 1980",
+                  "semi_major_axis": 6378137,
+                  "inverse_flattening": 298.257222101
+                }
+              },
+              "coordinate_system": {
+                "axis": [
+                  {
+                    "name": "Geodetic latitude",
+                    "unit": "degree",
+                    "direction": "north",
+                    "abbreviation": "Lat"
+                  },
+                  {
+                    "name": "Geodetic longitude",
+                    "unit": "degree",
+                    "direction": "east",
+                    "abbreviation": "Lon"
+                  }
+                ],
+                "subtype": "ellipsoidal"
+              }
+            },
+            "conversion": {
+              "name": "UTM zone 33N",
+              "method": {
+                "id": {
+                  "code": 9807,
+                  "authority": "EPSG"
+                },
+                "name": "Transverse Mercator"
+              },
+              "parameters": [
+                {
+                  "id": {
+                    "code": 8801,
+                    "authority": "EPSG"
+                  },
+                  "name": "Latitude of natural origin",
+                  "unit": "degree",
+                  "value": 0
+                },
+                {
+                  "id": {
+                    "code": 8802,
+                    "authority": "EPSG"
+                  },
+                  "name": "Longitude of natural origin",
+                  "unit": "degree",
+                  "value": 15
+                },
+                {
+                  "id": {
+                    "code": 8805,
+                    "authority": "EPSG"
+                  },
+                  "name": "Scale factor at natural origin",
+                  "unit": "unity",
+                  "value": 0.9996
+                },
+                {
+                  "id": {
+                    "code": 8806,
+                    "authority": "EPSG"
+                  },
+                  "name": "False easting",
+                  "unit": "metre",
+                  "value": 500000
+                },
+                {
+                  "id": {
+                    "code": 8807,
+                    "authority": "EPSG"
+                  },
+                  "name": "False northing",
+                  "unit": "metre",
+                  "value": 0
+                }
+              ]
+            },
+            "coordinate_system": {
+              "axis": [
+                {
+                  "name": "Northing",
+                  "unit": "metre",
+                  "direction": "north",
+                  "abbreviation": ""
+                },
+                {
+                  "name": "Easting",
+                  "unit": "metre",
+                  "direction": "east",
+                  "abbreviation": ""
+                }
+              ],
+              "subtype": "Cartesian"
+            }
+          },
+          {
+            "name": "RH2000 height",
+            "type": "VerticalCRS",
+            "datum": {
+              "name": "Rikets hojdsystem 2000",
+              "type": "VerticalReferenceFrame"
+            },
+            "coordinate_system": {
+              "axis": [
+                {
+                  "name": "Gravity-related height",
+                  "unit": "metre",
+                  "direction": "up",
+                  "abbreviation": ""
+                }
+              ],
+              "subtype": "vertical"
+            }
+          }
+        ]
+      },
+      "proj:transform": [
+        1.0,
+        0.0,
+        670000.0,
+        0.0,
+        -1.0,
+        6590000.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "info": {
+      "href": "https://dl1.lantmateriet.se/hojd/pub/grid/mhm/65_6/m658_67_info.json",
+      "type": "application/json",
+      "roles": [
+        "metadata"
+      ],
+      "title": "m658_67_info.json",
+      "file:size": 4340,
+      "file:checksum": "1220f704b26c666d5f02d37151e00e927e0d4856aaa28eaf813725d2db6779b7b8d1"
+    },
+    "metadata": {
+      "href": "https://dl1.lantmateriet.se/hojd/pub/grid/mhm/65_6/m658_67_ursprung.json",
+      "type": "application/json",
+      "roles": [
+        "metadata"
+      ],
+      "title": "m658_67_ursprung.json",
+      "file:size": 345681,
+      "file:checksum": "1220389927f47647769e99659e065a7b27804070ec01dd6515ec92e2a4514c955845"
+    },
+    "thumbnail": {
+      "href": "https://dl1.lantmateriet.se/hojd/pub/grid/mhm/65_6/m658_67_thumbnail.png",
+      "type": "image/png",
+      "roles": [
+        "thumbnail",
+        "overview"
+      ],
+      "title": "m658_67_thumbnail.png",
+      "file:size": 37787,
+      "file:checksum": "1220669d7c5dbe21d43015529e293f0b5d19cc3a497b6abdd6ef85f3dc4c20472609"
+    },
+    "breakgeometry": {
+      "href": "https://dl1.lantmateriet.se/hojd/data/grid/mhm/65_6/m658_67_brytgeometri.gpkg",
+      "type": "application/geopackage+sqlite3",
+      "roles": [
+        "data"
+      ],
+      "title": "m658_67_brytgeometri.gpkg",
+      "file:size": 548864,
+      "file:checksum": "1220cd666907688cb74f91808cedb00ca5670dea4b071f2ba1aabc43a556e3581aab"
+    }
+  },
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          17.98777943595573,
+          59.32450240933669
+        ],
+        [
+          17.99568105390193,
+          59.414181278360466
+        ],
+        [
+          18.17159292518451,
+          59.41002275903112
+        ],
+        [
+          18.163229146820388,
+          59.320358631755006
+        ],
+        [
+          17.98777943595573,
+          59.32450240933669
+        ]
+      ]
+    ]
+  },
+  "collection": "dtm-cog",
+  "properties": {
+    "updated": "2026-09-15T13:55:19Z",
+    "datetime": "2023-04-27T00:00:00Z",
+    "proj:code": "EPSG:5845",
+    "brytgeometri": true,
+    "end_datetime": "2025-05-31T00:00:00Z",
+    "andringsdatum": "2026-02-19",
+    "data_modified": "2026-02-19T00:00:00Z",
+    "gridproducent": "Lantm\u00e4teriet",
+    "hojdmodelltyp": "markh\u00f6jdmodell",
+    "start_datetime": "2021-03-23T00:00:00Z",
+    "lagesosakerhethojd": 0.1,
+    "lagesosakerhetplan": 0.3,
+    "geometriskupplosning": 1.0,
+    "ursprungligtmatdatum": "2021-03-23",
+    "huvudsakliglagesbestamningsmetod": "Luftburen laserskanning"
+  },
+  "stac_version": "1.1.0",
+  "stac_extensions": [
+    "https://stac-extensions.github.io/projection/v2.0.0/schema.json",
+    "https://stac-extensions.github.io/file/v2.1.0/schema.json"
+  ]
+}

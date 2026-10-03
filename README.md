@@ -101,6 +101,16 @@ for search and download, and geotags WMS fallbacks in `EPSG:3006`. Preserve
 `© Lantmäteriet` attribution. See `configs/run/base_lantmateriet.json` and
 `configs/run/locations/kisa_sweden_2km.json`.
 
+Optional **Swedish DEM** (Markhöjdmodell 1 m DTM) uses a **different** national
+API — `https://api.lantmateriet.se/stac-hojd/v1` (collection `dtm-cog`) — not
+ortofoto `stac-bild` and not Polish Geoportal WCS. Enable with
+`provider=lantmateriet`, `transport=stac_hojd`, `products=["nmt"]`,
+`vertical_datum=rh2000` (Studio DEM checkbox is opt-in for Sweden). Asset
+download needs a Geotorget **Markhöjdmodell Nedladdning** subscription; set
+`SATMAP_LANTMATERIET_DEM_USERNAME`/`PASSWORD` (or shared
+`SATMAP_LANTMATERIET_*` if that account is entitled). See
+`docs/DATA_LICENSING.md`.
+
 **Sentinel-2** — Element84 Earth Search; Copernicus terms apply. Prefer one
 representative scene per year via `provider_options` (cloud cover, target DOY).
 

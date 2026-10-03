@@ -9,11 +9,10 @@ from satmap_dataset.pipeline import dem as dem_pipeline
 
 @register_layer("dem")
 class DemLayer(Layer):
-    """Elevation (NMT/NMPT) layer. Aligns to a grid supplied by the orchestrator.
+    """Elevation layer. Aligns to a grid supplied by the orchestrator.
 
-    Thin wrapper over the existing ``pipeline.dem.run`` (WCS + skorowidz
-    transports); raster outputs and their paths are produced by that pipeline
-    unchanged.
+    Thin wrapper over ``pipeline.dem.run`` (Geoportal WCS/skorowidz, or
+    Lantmäteriet Markhöjdmodell via ``transport=stac_hojd``).
     """
 
     name = "dem"

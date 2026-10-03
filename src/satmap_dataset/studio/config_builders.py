@@ -174,6 +174,12 @@ def build_dem_config(location_payload: dict[str, Any], base_json: Path) -> DemCo
             "render_manifest",
             str(Path(str(artifacts_dir)) / "dataset_manifest_render.json"),
         )
+    if merged.get("provider") == "lantmateriet":
+        # Markhöjdmodell via stac-hojd — never Polish WCS defaults.
+        merged.setdefault("transport", "stac_hojd")
+        merged.setdefault("products", ["nmt"])
+        merged.setdefault("vertical_datum", "rh2000")
+        merged.setdefault("srs", "EPSG:3006")
     return DemConfig.model_validate(merged)
 
 

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from satmap_dataset.config import IndexConfig, RunConfig
+from satmap_dataset.config import DemConfig, IndexConfig, RunConfig
 from satmap_dataset.studio.config_builders import (
+    build_dem_config,
     build_index_config,
     build_location_payload,
     build_run_config,
@@ -54,4 +55,26 @@ def test_build_lantmateriet_run_config():
     base_json = resolve_base_json("lantmateriet", REPO)
     config = build_run_config(payload, base_json)
     assert isinstance(config, RunConfig)
+    assert config.srs == "EPSG:3006"
+
+
+def test_build_lantmateriet_dem_config_uses_stac_hojd():
+    payload = build_location_payload(
+        location_name="Kisa",
+        center_lat=57.985,
+        center_lon=15.629,
+        area_km2=4.0,
+        provider="lantmateriet",
+        year_start=2010,
+        year_end=2014,
+        px_per_meter=5.0,
+        profile="train",
+    )
+    base_json = resolve_base_json("lantmateriet", REPO)
+    config = build_dem_config(payload, base_json)
+    assert isinstance(config, DemConfig)
+    assert config.provider == "lantmateriet"
+    assert config.transport == "stac_hojd"
+    assert config.products == ["nmt"]
+    assert config.vertical_datum == "rh2000"
     assert config.srs == "EPSG:3006"
