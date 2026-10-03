@@ -61,6 +61,9 @@ class StacSearchOptions:
     url: str
     collections: Sequence[str] = field(default_factory=tuple)
     api_key: str | None = None
+    # Full Authorization header value, e.g. "Basic …" or "Bearer …".
+    # When set, takes precedence over api_key.
+    authorization: str | None = None
     page_limit: int = 100
     max_pages: int = 50
 
@@ -253,12 +256,19 @@ def group_items_by_year(items: Iterable[StacItem]) -> dict[int, list[StacItem]]:
     return grouped
 
 
+def _item_footprint(item: StacItem) -> tuple[float, float, float, float] | None:
+    """Prefer projected footprint when present (matches project-CRS AOI bbox)."""
+    return item.proj_bbox if item.proj_bbox is not None else item.bbox
+
+
 def pick_item_for_bbox(items: Sequence[StacItem], bbox: tuple[float, float, float, float]) -> StacItem | None:
     """Pick the item whose footprint best covers `bbox`.
 
     Ranking: largest intersection area first; ties broken by IoU (so a tighter
     footprint that fully contains the target beats a sprawling one with the
     same intersection area), then smallest GSD, then item_id.
+    Uses ``proj_bbox`` when available so projected AOIs (e.g. EPSG:3006) match
+    correctly against STAC items that also carry a WGS84 ``bbox``.
     Returns None for empty input.
     """
     if not items:
@@ -289,8 +299,8 @@ def pick_item_for_bbox(items: Sequence[StacItem], bbox: tuple[float, float, floa
     ranked = sorted(
         items,
         key=lambda it: (
-            -overlap_area(it.bbox),
-            -iou(it.bbox),
+            -overlap_area(_item_footprint(it)),
+            -iou(_item_footprint(it)),
             it.gsd if it.gsd is not None else float("inf"),
             it.item_id,
         ),
@@ -342,7 +352,9 @@ async def search_features(
             body[key] = value
 
     headers = {"Content-Type": "application/json", "Accept": "application/geo+json"}
-    if options.api_key:
+    if options.authorization:
+        headers["Authorization"] = options.authorization
+    elif options.api_key:
         headers["Authorization"] = f"Bearer {options.api_key}"
 
     owns_client = client is None

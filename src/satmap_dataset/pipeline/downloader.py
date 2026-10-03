@@ -86,7 +86,8 @@ def _wms_time_for_year(year: int) -> str:
     return datetime(year, 7, 15, 12, 0, 0, tzinfo=cest).isoformat()
 
 
-def _geo_key_directory_for_epsg_2180() -> tuple[int, ...]:
+def _geo_key_directory_for_epsg(epsg: int) -> tuple[int, ...]:
+    """Minimal GeoTIFF GeoKeyDirectory for a projected EPSG code (metres)."""
     return (
         1,
         1,
@@ -103,12 +104,23 @@ def _geo_key_directory_for_epsg_2180() -> tuple[int, ...]:
         3072,
         0,
         1,
-        2180,
+        int(epsg),
         3076,
         0,
         1,
         9001,
     )
+
+
+def _geo_key_directory_for_epsg_2180() -> tuple[int, ...]:
+    return _geo_key_directory_for_epsg(2180)
+
+
+def _epsg_code_from_srs(srs: str) -> int:
+    text = (srs or "").strip().upper()
+    if text.startswith("EPSG:"):
+        return int(text.split(":", 1)[1])
+    raise ValueError(f"Unsupported SRS for WMS tile geotagging: {srs}")
 
 
 def _is_valid_cached_tiff(path: Path) -> bool:
@@ -300,8 +312,8 @@ def _iter_wms_tiles(
 
 
 def _tag_wms_tile_as_geotiff(path: Path, bbox: BBox, width: int, height: int, srs: str) -> None:
-    if srs.upper() != "EPSG:2180":
-        raise ValueError(f"Unsupported SRS for WMS tile geotagging: {srs}")
+    """Write GeoTIFF georef tags for a WMS GetMap TIFF (EPSG projected CRS)."""
+    epsg = _epsg_code_from_srs(srs)
 
     arr = None
     try:
@@ -331,7 +343,7 @@ def _tag_wms_tile_as_geotiff(path: Path, bbox: BBox, width: int, height: int, sr
     pixel_size_y = (bbox.max_y - bbox.min_y) / float(height)
     scale = (float(pixel_size_x), float(pixel_size_y), 0.0)
     tie = (0.0, 0.0, 0.0, float(bbox.min_x), float(bbox.max_y), 0.0)
-    geokey = _geo_key_directory_for_epsg_2180()
+    geokey = _geo_key_directory_for_epsg(epsg)
 
     temp = path.with_suffix(path.suffix + ".tmp")
     if temp.exists():

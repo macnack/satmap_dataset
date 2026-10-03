@@ -35,7 +35,13 @@ class RgbLayer(Layer):
             )
         self.provider_name = provider_name
         self.name = f"{provider_name}_rgb"
-        self.default_native_srs = "EPSG:2180"
+        self.default_native_srs = {
+            "geoportal": "EPSG:2180",
+            "lantmateriet": "EPSG:3006",
+            "nls": "EPSG:3067",
+            "sentinel2": "EPSG:4326",
+            "lroc_nac": "IAU_2015:30100",
+        }.get(provider_name, "EPSG:2180")
 
     def bands(self, config: RunConfig) -> list[str]:
         return list(_RGB_BANDS)

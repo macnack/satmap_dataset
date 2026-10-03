@@ -50,6 +50,11 @@ def test_lantmateriet_index_writes_manifest_from_multi_year_fixture(monkeypatch,
     assert sorted(payload["years_included"]) == [2018, 2020, 2024]
     assert payload["tile_sources_by_year"]["2024"]
     assert payload["years_excluded_with_reason"]["2019"].startswith("exact_only")
+    # 2020 fixture has two items — index must keep the best-covering one only.
+    assert list(payload["tile_sources_by_year"]["2020"].keys()) == ["ortofoto_2020_kisa_better"]
+    assert payload["gsd_by_year"]["2020"]["finest"] == 0.16
+    assert payload["provider_metadata"]["selected_one_item_per_year"] is True
+    assert payload["provider_metadata"]["candidates_per_year"]["2020"] == 2
 
 
 def test_lantmateriet_index_applies_nearest_before_policy_for_missing_years(monkeypatch, tmp_path: Path) -> None:

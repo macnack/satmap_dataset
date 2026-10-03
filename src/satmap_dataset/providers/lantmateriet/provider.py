@@ -34,6 +34,8 @@ from satmap_dataset.models import (
     YearAvailabilityReport,
     YearStatus,
 )
+from satmap_dataset.pipeline.downloader import BBox, _tag_wms_tile_as_geotiff
+from satmap_dataset.pipeline.index_builder import _summarize_gsd_by_year
 from satmap_dataset.pipeline.validator import evaluate_year_policy
 from satmap_dataset.providers.base import Provider
 from satmap_dataset.providers.lantmateriet import crs, stac, year_policy, wms
@@ -76,12 +78,17 @@ def _resolve_search_options(options: dict[str, Any]) -> stac.StacSearchOptions:
     else:
         collections = (str(collection_value),) if collection_value else ()
     api_key = _option(options, "api_key", "SATMAP_LANTMATERIET_API_KEY", None)
+    # Prefer Geotorget Basic auth (same as asset download); fall back to Bearer.
+    authorization = _basic_auth_header(options)
+    if authorization is None and api_key:
+        authorization = f"Bearer {api_key}"
     page_limit = int(options.get("page_limit", 500))
     max_pages = int(options.get("max_pages", 50))
     return stac.StacSearchOptions(
         url=str(url),
         collections=collections,
         api_key=str(api_key) if api_key else None,
+        authorization=authorization,
         page_limit=page_limit,
         max_pages=max_pages,
     )
@@ -135,6 +142,7 @@ def build_index_manifest(
     warnings: list[str],
     errors: list[str],
     provider_metadata: dict[str, Any],
+    aoi_bbox: tuple[float, float, float, float] | None = None,
 ) -> IndexManifest:
     requested_years = config.requested_years
     year_statuses: list[YearStatus] = []
@@ -142,6 +150,16 @@ def build_index_manifest(
     tile_bboxes_by_year: dict[int, dict[str, list[float]]] = {}
     tile_acquisition_by_year: dict[int, dict[str, TileAcquisitionMetadata]] = {}
     years_excluded_with_reason: dict[int, str] = {}
+    licenses: dict[str, str] = {}
+    attributions: dict[str, str] = {}
+    candidates_per_year: dict[int, int] = {}
+
+    project_bbox = aoi_bbox
+    if project_bbox is None:
+        try:
+            project_bbox = _parse_bbox(config.bbox)
+        except ValueError:
+            project_bbox = None
 
     for year in requested_years:
         match = matches[year]
@@ -171,23 +189,38 @@ def build_index_manifest(
             years_excluded_with_reason[year] = "matched_year_missing_item"
             continue
 
+        candidates_per_year[year] = len(items)
+        # One best-covering STAC item per requested year (avoids duplicate mosaics).
+        if project_bbox is not None and len(items) > 1:
+            chosen = stac.pick_item_for_bbox(items, project_bbox)
+            selected_items = [chosen] if chosen is not None else list(items)
+        else:
+            selected_items = list(items)
+
         sources: dict[str, str] = {}
         bboxes: dict[str, list[float]] = {}
         acquisition: dict[str, TileAcquisitionMetadata] = {}
-        for item in items:
+        for item in selected_items:
+            if item is None:
+                continue
             asset = stac.select_asset(item)
             if asset is None:
                 continue
             tile_id = item.item_id or f"{match.matched_year}_{asset.key}"
             sources[tile_id] = asset.href
-            footprint = item.proj_bbox if item.proj_bbox is not None else item.bbox
+            footprint = stac._item_footprint(item)
             if footprint is not None:
                 bboxes[tile_id] = list(footprint)
             acquisition[tile_id] = TileAcquisitionMetadata(
                 acquisition_date=item.datetime_iso,
                 publication_date=None,
                 acquisition_year=match.matched_year,
+                gsd=item.gsd,
             )
+            if item.license:
+                licenses[tile_id] = item.license
+            if item.attribution:
+                attributions[tile_id] = item.attribution
 
         if not sources:
             year_statuses.append(
@@ -225,11 +258,25 @@ def build_index_manifest(
     )
     combined_warnings = list(warnings) + list(policy.warnings)
     combined_errors = list(errors) + list(policy.errors)
+    gsd_by_year = _summarize_gsd_by_year(tile_acquisition_by_year)
 
     if not years_included:
         combined_errors.append(
             "STAC returned no usable assets for the requested bbox/years."
         )
+
+    meta = dict(provider_metadata)
+    meta["candidates_per_year"] = candidates_per_year
+    meta["selected_one_item_per_year"] = True
+    if licenses:
+        meta["licenses"] = licenses
+    if attributions:
+        meta["attributions"] = attributions
+    # Surface a single attribution string for README-style © Lantmäteriet compliance.
+    if attributions:
+        meta["attribution"] = next(iter(attributions.values()))
+    elif licenses:
+        meta["attribution"] = "© Lantmäteriet"
 
     return IndexManifest(
         provider="lantmateriet",
@@ -249,11 +296,12 @@ def build_index_manifest(
         tile_sources_by_year=tile_sources_by_year,
         tile_bboxes_by_year=tile_bboxes_by_year,
         tile_acquisition_by_year=tile_acquisition_by_year,
+        gsd_by_year=gsd_by_year,
         passed=policy.passed and bool(years_included),
         errors=combined_errors,
         warnings=combined_warnings,
         run_parameters=config.model_dump(mode="json"),
-        provider_metadata=provider_metadata,
+        provider_metadata=meta,
     )
 
 
@@ -273,6 +321,7 @@ def build_year_availability_report(
         years_available_wfs=manifest.years_available_wfs,
         years_included=manifest.years_included,
         years_excluded_with_reason=manifest.years_excluded_with_reason,
+        gsd_by_year=manifest.gsd_by_year,
         strict_years=manifest.strict_years,
         min_years=manifest.min_years,
         passed=manifest.passed,
@@ -412,6 +461,7 @@ class LantmaterietProvider(Provider):
             warnings=warnings,
             errors=errors,
             provider_metadata=provider_metadata,
+            aoi_bbox=bbox,
         )
         availability = build_year_availability_report(config=config, manifest=manifest)
 
@@ -514,6 +564,15 @@ class LantmaterietProvider(Provider):
                     years=missing_years,
                     options=options,
                 )
+                width_px = int(options.get("wms_width_px", 2048))
+                height_px = int(options.get("wms_height_px", 2048))
+                wms_bbox = _parse_bbox(config.bbox or "")
+                tag_bbox = BBox(
+                    min_x=wms_bbox[0],
+                    min_y=wms_bbox[1],
+                    max_x=wms_bbox[2],
+                    max_y=wms_bbox[3],
+                )
                 async with httpx.AsyncClient(
                     follow_redirects=True, timeout=timeout, limits=limits, headers=headers
                 ) as client:
@@ -529,6 +588,20 @@ class LantmaterietProvider(Provider):
                             sleep_max=config.sleep_max,
                         )
                         if ok:
+                            try:
+                                _tag_wms_tile_as_geotiff(
+                                    output_path,
+                                    tag_bbox,
+                                    width_px,
+                                    height_px,
+                                    config.srs,
+                                )
+                            except Exception as exc:
+                                logger.warning(
+                                    "WMS geotag failed for %s (%s); keeping raw TIFF",
+                                    output_path,
+                                    exc,
+                                )
                             assets.append(str(output_path))
                             years_source_map[year] = "wms_fallback"
                         else:

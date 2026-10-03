@@ -95,8 +95,11 @@ Profiles: `train` (default) and `reference` (geometry-driven sizing + extra QC f
 python -m satmap_dataset.cli nls-run-json configs/run/base_nls.json
 ```
 
-**Lantmäteriet** — STAC primary; preserve `© Lantmäteriet` attribution. See
-`configs/run/base_lantmateriet.json` and `configs/run/locations/kisa_sweden_2km.json`.
+**Lantmäteriet** — STAC primary (`mode: "stac"` / `hybrid`); index picks the
+best-covering item per year with GSD + attribution, uses Geotorget Basic auth
+for search and download, and geotags WMS fallbacks in `EPSG:3006`. Preserve
+`© Lantmäteriet` attribution. See `configs/run/base_lantmateriet.json` and
+`configs/run/locations/kisa_sweden_2km.json`.
 
 **Sentinel-2** — Element84 Earth Search; Copernicus terms apply. Prefer one
 representative scene per year via `provider_options` (cloud cover, target DOY).
