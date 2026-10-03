@@ -50,6 +50,9 @@ htmlcov/
 # Local artifacts
 artifacts/
 
+# Git worktrees (local isolation)
+.worktrees/
+
 # Secrets / API keys (NLS Finland, Lantmäteriet, etc.) — never commit. Use
 # .secret.template as the shape; copy to .secret locally and `direnv allow`
 # to load via dotenv_if_exists in .envrc.
