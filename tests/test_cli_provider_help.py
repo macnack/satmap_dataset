@@ -15,7 +15,18 @@ def _cli_env() -> dict[str, str]:
     src_path = str(ROOT / "src")
     existing = env.get("PYTHONPATH")
     env["PYTHONPATH"] = src_path if not existing else f"{src_path}{os.pathsep}{existing}"
+    # Keep Typer/Rich help plain and wide so option names are not wrapped/colored away.
+    env["NO_COLOR"] = "1"
+    env["FORCE_COLOR"] = "0"
+    env["TERM"] = "dumb"
+    env["COLUMNS"] = "200"
     return env
+
+
+def _strip_ansi(text: str) -> str:
+    import re
+
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
 @pytest.mark.parametrize("subcommand", ["index", "download", "run"])
@@ -29,7 +40,7 @@ def test_cli_subcommand_help_lists_provider_option(subcommand: str) -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    flat = " ".join(result.stdout.split())
+    flat = " ".join(_strip_ansi(result.stdout).split())
     assert "--provider" in flat
     assert "geoportal" in flat
     assert "lantmateriet" in flat

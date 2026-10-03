@@ -113,24 +113,34 @@ def _normalise_elevation_raster(path: Path) -> str | None:
             "fetched, so it is NOT the single-band Float32 the DEM_F32 profile promises"
         )
 
-    gdal_translate = _tool_path("gdal_translate")
-    if not gdal_translate:
-        return (
-            f"{path.name}: {arr.shape[-1]}-band elevation response could not be collapsed "
-            "to single-band Float32 (GDAL CLI not found); the DEM_F32 profile is not met"
-        )
     tmp_path = path.with_suffix(".normalised.tif")
-    try:
-        subprocess.run(
-            [
-                gdal_translate, "-b", "1", "-ot", "Float32",
-                "-co", "COMPRESS=DEFLATE", str(path), str(tmp_path),
-            ],
-            check=True, capture_output=True, text=True,
-        )
-    except subprocess.CalledProcessError as exc:
-        tmp_path.unlink(missing_ok=True)
-        return f"{path.name}: band normalisation failed: {(exc.stderr or '')[-200:]}"
+    gdal_translate = _tool_path("gdal_translate")
+    if gdal_translate:
+        try:
+            subprocess.run(
+                [
+                    gdal_translate, "-b", "1", "-ot", "Float32",
+                    "-co", "COMPRESS=DEFLATE", str(path), str(tmp_path),
+                ],
+                check=True, capture_output=True, text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            tmp_path.unlink(missing_ok=True)
+            return f"{path.name}: band normalisation failed: {(exc.stderr or '')[-200:]}"
+    else:
+        # CI / minimal installs may lack GDAL CLI — rewrite with tifffile instead.
+        try:
+            tifffile.imwrite(
+                str(tmp_path),
+                arr[..., 0].astype(np.float32, copy=False),
+                compression="deflate",
+            )
+        except Exception as exc:  # noqa: BLE001
+            tmp_path.unlink(missing_ok=True)
+            return (
+                f"{path.name}: {arr.shape[-1]}-band elevation response could not be "
+                f"collapsed to single-band Float32 (no GDAL; tifffile rewrite failed: {exc})"
+            )
     tmp_path.replace(path)
     quantised = np.issubdtype(arr.dtype, np.integer)
     return (

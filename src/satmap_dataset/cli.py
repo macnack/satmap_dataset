@@ -561,9 +561,12 @@ def summary_locations_command(
     location_files = _location_files_or_exit(locations_dir)
     repo_root = base_json.resolve().parents[2] if len(base_json.resolve().parents) >= 3 else Path.cwd().resolve()
 
-    # Force a wide console so year ranges like "2014-2016 (3)" are not ellipsized
-    # (CliRunner / non-TTY defaults are too narrow for this table).
-    output_console = Console(width=220, force_terminal=True)
+    # Wide, colorless console so year ranges like "2014-2016 (3)" stay intact and
+    # tests/CI can match plain text. FORCE_COLOR overrides no_color alone — pin
+    # color_system=None as well.
+    output_console = Console(
+        width=220, force_terminal=True, no_color=True, color_system=None
+    )
     table = Table(show_header=True, header_style="bold")
     table.add_column("File", overflow="fold")
     table.add_column("Location", overflow="fold")

@@ -36,4 +36,8 @@ jobs:
       - name: Run tests
         env:
           SATMAP_LIVE_TESTS: "0"
+          NO_COLOR: "1"
+          TERM: dumb
+          COLUMNS: "200"
+          FORCE_COLOR: "0"
         run: pytest
