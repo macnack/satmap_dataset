@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -44,7 +45,9 @@ from satmap_dataset.pipeline import osm as osm_pipeline
 # grid-reading helpers are shared with the simpler backfill driver.
 from scripts.osm_backfill import _grid_from_tiff  # noqa: E402
 
-SAT_DATA = Path("/home/maciej/Github/sat_data")
+SAT_DATA = Path(
+    os.environ.get("SATMAP_GMIX_DEST", os.environ.get("SATMAP_SAT_DATA", "~/sat_data"))
+).expanduser()
 POZNAN4 = ["rendered_poznan", "rendered_przezmierowo", "rendered_sosnowiec", "rendered_zagan_zwirownia"]
 CATEGORIES = ["buildings", "roads", "paths", "green", "water"]
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"

@@ -474,7 +474,7 @@ def _tab_settings() -> None:
             help=EQUALIZE_GSD,
         )
         st.session_state["raw_root"] = st.text_input(
-            "Raw root (empty = SATMAP_RAW_ROOT or ~/Github/sat_data_raw)",
+            "Raw root (empty = SATMAP_RAW_ROOT or ~/sat_data_raw)",
             value=st.session_state["raw_root"],
             help=RAW_ROOT,
         )

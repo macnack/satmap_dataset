@@ -5,9 +5,22 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "satmap-dataset"
 version = "0.1.0"
-description = "Phase-1 scaffold for satellite map dataset pipeline."
+description = "Year-aware multi-provider orthophoto dataset builder with JSON manifests."
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
+authors = [{ name = "Maciej" }]
+keywords = ["orthophoto", "remote-sensing", "geoportal", "dataset", "ml"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: GIS",
+]
 dependencies = [
   "httpx",
   "aiofiles",
@@ -34,6 +47,10 @@ studio = [
   "folium>=0.15",
 ]
 
+[project.urls]
+Homepage = "https://github.com/macnack/satmap_dataset"
+Issues = "https://github.com/macnack/satmap_dataset/issues"
+
 [project.scripts]
 satmap-dataset = "satmap_dataset.cli:main"
 summary-locations = "satmap_dataset.cli:summary_locations_main"
@@ -50,3 +67,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+markers = [
+  "live: hits external network services (opt-in via SATMAP_LIVE_TESTS=1)",
+]

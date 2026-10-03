@@ -105,7 +105,7 @@ EQUALIZE_GSD = (
     "co-registered and equal-dimension. Off keeps native GSD per year."
 )
 RAW_ROOT = (
-    "Root for raw tile export. Default: SATMAP_RAW_ROOT env or ~/Github/sat_data_raw."
+    "Root for raw tile export. Default: SATMAP_RAW_ROOT env or ~/sat_data_raw."
 )
 CHECK_INDEX = (
     "Probe WFS/STAC for each requested year without downloading. Writes index_manifest.json "

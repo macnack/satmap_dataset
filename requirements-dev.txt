@@ -1,3 +1,4 @@
+# Prefer: pip install -e ".[dev]"
 -r requirements.txt
 pytest
 pytest-cov

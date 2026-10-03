@@ -60,3 +60,4 @@ artifacts/
 .secret.*
 *.secret
 .env
+-t_srs

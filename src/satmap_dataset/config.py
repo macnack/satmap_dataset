@@ -143,6 +143,8 @@ class DownloadConfig(BaseModel):
 
 
 class MosaicConfig(BaseModel):
+    """Deprecated: mosaic stage removed; CLI ``mosaic`` aliases ``render``."""
+
     dataset_manifest: Path = Path("artifacts/dataset_manifest_download.json")
     target_width: int = Field(default=30000, ge=1)
     target_height: int = Field(default=30000, ge=1)
@@ -558,7 +560,7 @@ def _default_raw_root() -> Path:
     env = os.environ.get("SATMAP_RAW_ROOT")
     if env:
         return Path(env).expanduser()
-    return Path("~/Github/sat_data_raw").expanduser()
+    return Path("~/sat_data_raw").expanduser()
 
 
 class RawExportConfig(BaseModel):
