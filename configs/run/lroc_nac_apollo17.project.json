@@ -1,0 +1,10 @@
+{
+  "download_manifest": "artifacts_lroc_nac_apollo17/dataset_manifest_download.json",
+  "download_root": "downloads_lroc_nac_apollo17",
+  "project_root": "projected_lroc_nac_apollo17",
+  "srs": "IAU_2015:30100",
+  "overwrite": false,
+  "keep_work_cubes": false,
+  "artifacts_dir": "artifacts_lroc_nac_apollo17",
+  "output_json": "artifacts_lroc_nac_apollo17/project_manifest.json"
+}

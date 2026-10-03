@@ -660,6 +660,33 @@ class RawExportConfig(BaseModel):
         return value
 
 
+class LrocProjectConfig(BaseModel):
+    """Input config for the opt-in LROC ISIS projection stage (post-download).
+
+    Requires USGS ISIS binaries (`lronac2isis`, `spiceinit`, `cam2map`) on PATH.
+    Not wired into run-all; invoke via ``lroc-project`` / ``lroc-project-json``.
+    """
+
+    download_manifest: Path
+    download_root: Path | None = None
+    project_root: Path = Path("projected")
+    srs: str = "IAU_2015:30100"
+    map_file: Path | None = None
+    overwrite: bool = False
+    keep_work_cubes: bool = False
+    artifacts_dir: Path = Path("artifacts")
+    output_json: Path = Path("artifacts/project_manifest.json")
+
+    @model_validator(mode="after")
+    def validate_lunar_srs(self) -> "LrocProjectConfig":
+        if not self.srs.upper().startswith("IAU_2015:301"):
+            raise ValueError(
+                f"lroc-project requires a lunar IAU_2015:301xx CRS "
+                f"(e.g. 'IAU_2015:30100'); got srs={self.srs!r}."
+            )
+        return self
+
+
 class TrajectoryConfig(BaseModel):
     track_path: Path
     output_dir: Path

@@ -22,6 +22,7 @@ from satmap_dataset.config import (
     DemConfig,
     DownloadConfig,
     IndexConfig,
+    LrocProjectConfig,
     OsmConfig,
     RawExportConfig,
     RenderConfig,
@@ -29,7 +30,19 @@ from satmap_dataset.config import (
     ValidateConfig,
     _default_raw_root,
 )
-from satmap_dataset.pipeline import dem, dem_availability, downloader, index_builder, location_run, raw_export, render, run_all, validator, osm as osm_pipeline
+from satmap_dataset.pipeline import (
+    dem,
+    dem_availability,
+    downloader,
+    index_builder,
+    location_run,
+    lroc_project,
+    raw_export,
+    render,
+    run_all,
+    validator,
+    osm as osm_pipeline,
+)
 from satmap_dataset.raw_tiles.split_manifest import build_test_manifest
 from satmap_dataset.providers import get_provider
 
@@ -2150,6 +2163,74 @@ def studio_command(
         host,
     ]
     raise typer.Exit(code=subprocess.call(cmd))
+
+
+@app.command("lroc-project")
+def lroc_project_command(
+    download_manifest: Path = typer.Option(
+        ...,
+        help="dataset_manifest_download.json from lroc_nac download.",
+    ),
+    project_root: Path = typer.Option(
+        Path("projected"),
+        help="Root for projected ISIS cubes (<year>/<stem>_map.cub).",
+    ),
+    download_root: Path | None = typer.Option(
+        None,
+        help="Optional downloads root (provenance only).",
+    ),
+    srs: str = typer.Option("IAU_2015:30100", help="Lunar CRS (IAU_2015:301xx)."),
+    map_file: Path | None = typer.Option(
+        None,
+        help="Optional ISIS map template for cam2map map=.",
+    ),
+    overwrite: bool = typer.Option(False, help="Re-project even if *_map.cub exists."),
+    keep_work_cubes: bool = typer.Option(
+        False,
+        help="Keep intermediate .cub from lronac2isis.",
+    ),
+    artifacts_dir: Path = typer.Option(
+        Path("artifacts"),
+        help="Where project_manifest.json is written.",
+    ),
+    output_json: Path | None = typer.Option(None, help="Stage artifact path."),
+) -> None:
+    """Project downloaded LROC NAC frames with ISIS cam2map (requires ISIS on PATH)."""
+    payload: dict[str, object] = {
+        "download_manifest": str(download_manifest),
+        "project_root": str(project_root),
+        "srs": srs,
+        "overwrite": overwrite,
+        "keep_work_cubes": keep_work_cubes,
+        "artifacts_dir": str(artifacts_dir),
+        "output_json": str(output_json) if output_json else str(artifacts_dir / "project_manifest.json"),
+    }
+    if download_root is not None:
+        payload["download_root"] = str(download_root)
+    if map_file is not None:
+        payload["map_file"] = str(map_file)
+    try:
+        config = LrocProjectConfig.model_validate(payload)
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+    exit_code, artifact_path = lroc_project.run(config)
+    _finish(exit_code, artifact_path)
+
+
+@app.command("lroc-project-json")
+def lroc_project_json_command(
+    params_json: Path = typer.Argument(..., help="JSON file with LrocProjectConfig fields."),
+) -> None:
+    """Project LROC NAC frames from a JSON config (requires ISIS on PATH)."""
+    try:
+        payload = _load_params_json_dict(params_json)
+        config = LrocProjectConfig.model_validate(payload)
+    except ValidationError as error:
+        _print_validation_error(error)
+        raise typer.Exit(code=2) from error
+    exit_code, artifact_path = lroc_project.run(config)
+    _finish(exit_code, artifact_path)
 
 
 def main() -> None:
