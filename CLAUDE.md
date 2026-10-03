@@ -54,13 +54,18 @@ Four stages, each implemented as `src/satmap_dataset/pipeline/<stage>.py` exposi
 3. `render.run` — pyvips composes per-year mosaics on a shared grid → `dataset_manifest_render.json` + `<render_root>/year_YYYY.tif` files.
 4. `validator.run` — checks asset existence, pixel profile, sizes, EPSG, georef, sidecars → `validation_report.json`.
 
-`pipeline/run_all.py` orchestrates all four and is the entry point for the `run`, `run-json`, and `run-location-json` CLI commands. It implements **idempotent reuse**:
+`pipeline/orchestrator.py` is the single location/AOI entry: RGB layer (defines `ReferenceGrid`) → optional DEM/OSM → optional validate → `pipeline_manifest.json`. Config: `PipelineConfig`. CLI wrappers:
 
-- Index is reused if `_can_reuse_index` matches (year range, bbox, srs, strict/min flags, provider) and tile bboxes don't appear axis-swapped.
+- `run` / `run-json` / `run-location-json` → `run_all.run` (RGB + validate only; returns `validation_report.json`)
+- `location-run-json` → `location_run.run_location` (RGB + optional DEM/OSM; returns `rgb_layer_manifest.json`)
+
+RGB index → download → render (with **idempotent reuse**) lives in `pipeline/rgb_pipeline.py`:
+
+- Index is reused if `_can_reuse_index` matches (year range, bbox, srs, strict/min, provider, geoportal **mode**/WMS-stub vs WFS) and tile bboxes don't appear axis-swapped.
 - Download is reused if `_can_reuse_download` matches mode/profile/`force_wms_years` and every asset path on disk still exists.
 - `run-all-location-json` skips a whole location when `<artifacts_dir>/validation_report.json` already shows `passed=true`.
 
-When changing pipeline behavior, also update these reuse predicates — otherwise `run-all` will silently keep stale outputs.
+When changing pipeline behavior, also update these reuse predicates — otherwise the orchestrator will silently keep stale outputs.
 
 ### Models and configs
 

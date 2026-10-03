@@ -4,7 +4,7 @@ from pathlib import Path
 
 from satmap_dataset.config import DemConfig, OsmConfig, RunConfig
 from satmap_dataset.models import LayerManifest, ReferenceGrid
-from satmap_dataset.pipeline import location_run
+from satmap_dataset.pipeline import location_run, orchestrator
 
 
 def _rgb_config(tmp_path: Path) -> RunConfig:
@@ -63,7 +63,7 @@ def _install_fake_layers(monkeypatch, grid, recorder):
         "dem": _FakeLayer("dem", dem_manifest, recorder["dem"]),
         "osm": _FakeLayer("labels", osm_manifest, recorder["osm"]),
     }
-    monkeypatch.setattr(location_run, "get_layer", lambda name: layers[name])
+    monkeypatch.setattr(orchestrator, "get_layer", lambda name: layers[name])
 
 
 def test_run_location_computes_grid_once_and_passes_to_dem_osm(monkeypatch, tmp_path: Path):
@@ -86,16 +86,14 @@ def test_run_location_computes_grid_once_and_passes_to_dem_osm(monkeypatch, tmp_
     )
 
     assert code == 0
-    # The RGB grid is computed once and handed to both downstream layers.
     assert recorder["dem"]["grid"] is grid
     assert recorder["osm"]["grid"] is grid
-    # RGB layer manifest is written to artifacts.
     rgb_out = Path(path)
     assert rgb_out.exists()
     assert LayerManifest.model_validate_json(rgb_out.read_text()).role == "rgb"
-    # DEM + OSM manifests written to their configured outputs.
     assert (tmp_path / "dem" / "dem_manifest.json").exists()
     assert (tmp_path / "osm" / "osm_manifest.json").exists()
+    assert (tmp_path / "artifacts" / "pipeline_manifest.json").exists()
 
 
 def test_run_location_skips_dem_osm_when_not_requested(monkeypatch, tmp_path: Path):
@@ -113,7 +111,7 @@ def test_run_location_skips_dem_osm_when_not_requested(monkeypatch, tmp_path: Pa
         validate=False,
     )
     assert code == 0
-    assert recorder["dem"] == {}  # produce never called
+    assert recorder["dem"] == {}
     assert not (tmp_path / "dem" / "dem_manifest.json").exists()
 
 
@@ -125,7 +123,7 @@ def test_run_location_rgb_failure_short_circuits(monkeypatch, tmp_path: Path):
             return 1, rgb_manifest
 
     monkeypatch.setattr(
-        location_run, "get_layer", lambda name: _FailRgb("rgb", rgb_manifest)
+        orchestrator, "get_layer", lambda name: _FailRgb("rgb", rgb_manifest)
     )
     code, _ = location_run.run_location(
         rgb_config=_rgb_config(tmp_path),

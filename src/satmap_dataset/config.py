@@ -668,3 +668,36 @@ class TrajectoryConfig(BaseModel):
         if self.sleep_max < self.sleep_min:
             raise ValueError("sleep_max must be >= sleep_min")
         return self
+
+
+class PipelineConfig(BaseModel):
+    """Single entry config for the unified location/RGB orchestrator.
+
+    RGB always runs first and defines the shared ``ReferenceGrid``. DEM/OSM are
+    optional layers that align to that grid. ``validate`` runs the RGB validator
+    against the RGB layer manifest.
+    """
+
+    rgb: RunConfig
+    dem: DemConfig | None = None
+    osm: OsmConfig | None = None
+    run_dem: bool = False
+    run_osm: bool = False
+    run_validate: bool = True
+
+    @model_validator(mode="after")
+    def validate_optional_layers(self) -> "PipelineConfig":
+        if self.run_dem and self.dem is None:
+            raise ValueError("run_dem=True requires dem config")
+        if self.run_osm and self.osm is None:
+            raise ValueError("run_osm=True requires osm config")
+        return self
+
+    @property
+    def layers_requested(self) -> list[str]:
+        names = [f"{self.rgb.provider}_rgb"]
+        if self.run_dem and self.dem is not None:
+            names.append("dem")
+        if self.run_osm and self.osm is not None:
+            names.append("osm")
+        return names

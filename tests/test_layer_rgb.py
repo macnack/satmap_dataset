@@ -61,7 +61,7 @@ def _stub_rgb_pipeline(monkeypatch, tmp_path: Path) -> Path:
         render_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
         return 0, render_path
 
-    monkeypatch.setattr("satmap_dataset.layers.rgb._run_rgb_pipeline", fake_run_rgb)
+    monkeypatch.setattr("satmap_dataset.layers.rgb.run_rgb_pipeline", fake_run_rgb)
     return render_path
 
 
@@ -103,7 +103,7 @@ def test_rgb_layer_produce_propagates_failure(monkeypatch, tmp_path: Path):
     def fake_fail(config):
         return 1, tmp_path / "artifacts" / "index_manifest.json"
 
-    monkeypatch.setattr("satmap_dataset.layers.rgb._run_rgb_pipeline", fake_fail)
+    monkeypatch.setattr("satmap_dataset.layers.rgb.run_rgb_pipeline", fake_fail)
     layer = get_layer("geoportal_rgb")
     code, manifest = layer.produce(_run_config(tmp_path), grid=None)
     assert code == 1

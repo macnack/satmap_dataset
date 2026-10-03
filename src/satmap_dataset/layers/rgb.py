@@ -10,7 +10,7 @@ from satmap_dataset.models import (
     ReferenceGrid,
 )
 from satmap_dataset.pipeline import render
-from satmap_dataset.pipeline.run_all import _run_rgb_pipeline
+from satmap_dataset.pipeline.rgb_pipeline import run_rgb_pipeline
 
 _RGB_BANDS = ["red", "green", "blue"]
 
@@ -19,9 +19,9 @@ class RgbLayer(Layer):
     """RGB orthophoto layer. Defines the shared ReferenceGrid for a location.
 
     Wraps the existing index -> download -> render pipeline (via
-    ``run_all._run_rgb_pipeline``) and maps its render manifest onto the unified
-    ``LayerManifest``. The render stage owns the actual raster files; this
-    adapter only assembles provenance.
+    ``rgb_pipeline.run_rgb_pipeline``) and maps its render manifest onto the
+    unified ``LayerManifest``. The render stage owns the actual raster files;
+    this adapter only assembles provenance.
     """
 
     role = "rgb"
@@ -43,7 +43,7 @@ class RgbLayer(Layer):
     def produce(
         self, config: RunConfig, grid: ReferenceGrid | None = None
     ) -> tuple[int, LayerManifest]:
-        code, render_output = _run_rgb_pipeline(config)
+        code, render_output = run_rgb_pipeline(config)
         if code != 0:
             return code, LayerManifest(
                 layer=self.name,

@@ -413,3 +413,23 @@ class TrajectoryManifest(BaseModel):
     cell_count: int = Field(..., ge=0)
     cells: list[CellEntry] = Field(default_factory=list)
     generated_at: datetime = Field(default_factory=_utc_now)
+
+
+class PipelineManifest(BaseModel):
+    """On-disk JSON contract for the unified orchestrator (`pipeline_manifest.json`)."""
+
+    kind: Literal["pipeline_manifest"] = "pipeline_manifest"
+    stage: Literal["pipeline"] = "pipeline"
+    generated_at: datetime = Field(default_factory=_utc_now)
+    layers_requested: list[str] = Field(default_factory=list)
+    layers_completed: list[str] = Field(default_factory=list)
+    layer_artifacts: dict[str, str] = Field(default_factory=dict)
+    grid: ReferenceGrid | None = None
+    run_validate: bool = True
+    validation_report: str | None = None
+    # Path of the stage/layer artifact that caused a non-zero exit (RGB short-circuit).
+    failed_artifact: str | None = None
+    passed: bool = False
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    run_parameters: dict[str, Any] = Field(default_factory=dict)
