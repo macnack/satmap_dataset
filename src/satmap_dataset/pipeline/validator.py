@@ -259,7 +259,12 @@ def run(config: ValidateConfig) -> tuple[int, Path]:
         strict_years=config.strict_years,
         min_years=config.min_years,
     )
-    report = report.model_copy(update={"run_parameters": config.model_dump(mode="json")})
+    report = report.model_copy(
+        update={
+            "run_parameters": config.model_dump(mode="json"),
+            "config_hash": config.config_hash,
+        }
+    )
 
     missing_assets = []
     for asset in dataset_manifest.assets:

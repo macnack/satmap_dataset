@@ -167,6 +167,8 @@ class ValidationReport(BaseModel):
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     run_parameters: dict[str, Any] = Field(default_factory=dict)
+    # Fingerprint of effective RunConfig inputs; None on legacy reports.
+    config_hash: str | None = None
 
 
 class YearAvailabilityReport(BaseModel):

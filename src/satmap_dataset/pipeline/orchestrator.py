@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 from satmap_dataset.config import PipelineConfig, ValidateConfig
+from satmap_dataset.io.config_hash import run_config_hash
 from satmap_dataset.layers import get_layer
 from satmap_dataset.models import PipelineManifest
 from satmap_dataset.pipeline import validator
@@ -111,6 +112,7 @@ def run(config: PipelineConfig) -> tuple[int, Path]:
             strict_years=rgb_config.strict_years,
             min_years=rgb_config.min_years,
             output_json=validate_output,
+            config_hash=run_config_hash(rgb_config),
         )
         validate_code, _ = validator.run(validate_config)
         validation_report = str(validate_output)

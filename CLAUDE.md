@@ -63,7 +63,7 @@ RGB index → download → render (with **idempotent reuse**) lives in `pipeline
 
 - Index is reused if `_can_reuse_index` matches (year range, bbox, srs, strict/min, provider, geoportal **mode**/WMS-stub vs WFS) and tile bboxes don't appear axis-swapped.
 - Download is reused if `_can_reuse_download` matches mode/profile/`force_wms_years` and every asset path on disk still exists.
-- `run-all-location-json` skips a whole location when `<artifacts_dir>/validation_report.json` already shows `passed=true`.
+- `run-all-location-json` skips a whole location only when `<artifacts_dir>/validation_report.json` shows `passed=true` **and** its `config_hash` matches the current merged RunConfig fingerprint (legacy reports without `config_hash` are never skipped).
 
 When changing pipeline behavior, also update these reuse predicates — otherwise the orchestrator will silently keep stale outputs.
 

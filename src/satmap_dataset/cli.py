@@ -29,6 +29,7 @@ from satmap_dataset.config import (
     ValidateConfig,
     _default_raw_root,
 )
+from satmap_dataset.io.config_hash import run_config_hash
 from satmap_dataset.pipeline import dem, dem_availability, downloader, index_builder, location_run, raw_export, render, run_all, validator, osm as osm_pipeline
 from satmap_dataset.raw_tiles.split_manifest import build_test_manifest
 from satmap_dataset.providers import get_provider
@@ -542,8 +543,28 @@ def _manifest_checkpoint(artifacts_dir: Path, filename: str) -> str:
     return "file"
 
 
-def _has_successful_validation_artifact(artifacts_dir: Path) -> bool:
-    return _manifest_checkpoint(artifacts_dir, "validation_report.json") == "yes"
+def _has_successful_validation_artifact(
+    artifacts_dir: Path,
+    *,
+    config_hash: str | None = None,
+) -> bool:
+    """Return True only when validation passed *and* config fingerprint matches.
+
+    Legacy reports without ``config_hash`` never skip (correctness over reuse).
+    """
+    if _manifest_checkpoint(artifacts_dir, "validation_report.json") != "yes":
+        return False
+    if not config_hash:
+        return False
+    report_path = artifacts_dir / "validation_report.json"
+    try:
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    stored = payload.get("config_hash")
+    if not isinstance(stored, str) or not stored:
+        return False
+    return stored == config_hash
 
 
 @app.command("summary-locations")
@@ -1338,7 +1359,8 @@ def run_all_location_json_command(
                 raise typer.Exit(code=2) from error
             continue
 
-        if _has_successful_validation_artifact(config.artifacts_dir):
+        current_hash = run_config_hash(config)
+        if _has_successful_validation_artifact(config.artifacts_dir, config_hash=current_hash):
             console.print(f"[green]skip existing artifact:[/green] {config.artifacts_dir / 'validation_report.json'}")
             continue
 
