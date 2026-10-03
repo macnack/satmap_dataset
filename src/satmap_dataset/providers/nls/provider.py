@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from satmap_dataset.config import DownloadConfig, IndexConfig
+from satmap_dataset.fingerprint import fingerprint_provider_options
 from satmap_dataset.io.atomic import part_path_for, unlink_quiet, write_stream_atomic
 from satmap_dataset.models import (
     DatasetManifest,
@@ -288,6 +289,7 @@ def _write_failed_manifest(config: IndexConfig, error: str) -> None:
         passed=False,
         errors=[error],
         run_parameters=config.model_dump(mode="json"),
+        provider_options_fingerprint=fingerprint_provider_options(config.provider_options),
     )
     config.output_json.parent.mkdir(parents=True, exist_ok=True)
     config.output_json.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
@@ -455,6 +457,7 @@ class NlsProvider(Provider):
             warnings=warnings,
             run_parameters=config.model_dump(mode="json"),
             provider_metadata=provider_metadata,
+            provider_options_fingerprint=fingerprint_provider_options(config.provider_options),
         )
 
         availability = YearAvailabilityReport(
@@ -654,6 +657,7 @@ class NlsProvider(Provider):
                 f"partial_years={len(partial_coverage_by_year)}"
             ),
             run_parameters=config.model_dump(mode="json"),
+            provider_options_fingerprint=fingerprint_provider_options(config.provider_options),
             provider_metadata={
                 "failed_urls": failed,
                 "dropped_years": dropped,

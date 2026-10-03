@@ -25,6 +25,7 @@ from urllib.parse import urlparse
 import httpx
 
 from satmap_dataset.config import DownloadConfig, IndexConfig
+from satmap_dataset.fingerprint import fingerprint_provider_options
 from satmap_dataset.geoportal.http import RetryPolicy
 from satmap_dataset.io.atomic import write_stream_atomic
 from satmap_dataset.models import (
@@ -302,6 +303,7 @@ def build_index_manifest(
         warnings=combined_warnings,
         run_parameters=config.model_dump(mode="json"),
         provider_metadata=meta,
+        provider_options_fingerprint=fingerprint_provider_options(config.provider_options),
     )
 
 
@@ -638,6 +640,7 @@ class LantmaterietProvider(Provider):
                 f"years_included={years_included_effective}"
             ),
             run_parameters=config.model_dump(mode="json"),
+            provider_options_fingerprint=fingerprint_provider_options(config.provider_options),
             provider_metadata={
                 "wms_fallback_used": [y for y, src in years_source_map.items() if src == "wms_fallback"],
             },

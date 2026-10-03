@@ -114,6 +114,9 @@ class IndexManifest(BaseModel):
     aoi_preview_png: str | None = None
     run_parameters: dict[str, Any] = Field(default_factory=dict)
     provider_metadata: dict[str, Any] = Field(default_factory=dict)
+    # SHA-256 of canonical JSON for provider_options at index time.
+    # None on pre-fingerprint manifests → reuse predicates must reject.
+    provider_options_fingerprint: str | None = None
 
 
 class DatasetManifest(BaseModel):
@@ -152,6 +155,9 @@ class DatasetManifest(BaseModel):
     notes: str | None = None
     run_parameters: dict[str, Any] = Field(default_factory=dict)
     provider_metadata: dict[str, Any] = Field(default_factory=dict)
+    # SHA-256 of canonical JSON for provider_options at download time.
+    # None on pre-fingerprint manifests → reuse predicates must reject.
+    provider_options_fingerprint: str | None = None
 
 
 class ValidationReport(BaseModel):
@@ -312,6 +318,9 @@ class LayerManifest(BaseModel):
     errors: list[str] = Field(default_factory=list)
     run_parameters: dict[str, Any] = Field(default_factory=dict)
     provider_metadata: dict[str, Any] = Field(default_factory=dict)
+    # SHA-256 of canonical JSON for provider_options at stage write time.
+    # None on pre-fingerprint manifests → reuse predicates must reject.
+    provider_options_fingerprint: str | None = None
 
     # --- Internal download->render handoff fields (geoportal/RGB plumbing) ---
     # Empty for terminal DEM/OSM layers; carried so the RGB pipeline's

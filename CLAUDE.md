@@ -61,8 +61,8 @@ Four stages, each implemented as `src/satmap_dataset/pipeline/<stage>.py` exposi
 
 RGB index → download → render (with **idempotent reuse**) lives in `pipeline/rgb_pipeline.py`:
 
-- Index is reused if `_can_reuse_index` matches (year range, bbox, srs, strict/min, provider, geoportal **mode**/WMS-stub vs WFS) and tile bboxes don't appear axis-swapped.
-- Download is reused if `_can_reuse_download` matches mode/profile/`force_wms_years` and every asset path on disk still exists.
+- Index is reused if `_can_reuse_index` matches (year range, bbox, srs, strict/min, provider, **`provider_options` fingerprint**, geoportal **mode**/WMS-stub vs WFS) and tile bboxes don't appear axis-swapped. Missing fingerprint → non-reusable.
+- Download is reused if `_can_reuse_download` matches provider/`provider_options` fingerprint/mode/profile/`force_wms_years` and every asset path on disk still exists. Missing fingerprint → non-reusable.
 - `run-all-location-json` skips a whole location when `<artifacts_dir>/validation_report.json` already shows `passed=true`.
 
 When changing pipeline behavior, also update these reuse predicates — otherwise the orchestrator will silently keep stale outputs.

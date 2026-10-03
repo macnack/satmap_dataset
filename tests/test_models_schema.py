@@ -186,6 +186,7 @@ def test_index_manifest_default_provider_is_geoportal() -> None:
     )
     assert m.provider == "geoportal"
     assert m.provider_metadata == {}
+    assert m.provider_options_fingerprint is None
 
 
 def test_dataset_manifest_accepts_nls_provider_and_wcs_mode() -> None:
