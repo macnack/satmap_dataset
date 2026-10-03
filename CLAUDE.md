@@ -120,9 +120,16 @@ overlapping NAC observation across the bbox + year range (each `pdsid` a
 distinct tile under its acquisition year — the multi-temporal axis);
 `download` pulls the PDS frames. `provider_options`: `product_type`
 (default `CDRNAC4`), `page_limit`, `max_pages`, `max_incidence_angle`,
-`min_obtime`/`max_obtime`. Downloaded frames are unprojected camera-geometry
-rasters — ISIS `cam2map` projection and render are a separate, deferred stage.
-Sample configs: `configs/run/lroc_nac_apollo17.{index,download}.json`.
+`min_obtime`/`max_obtime`.
+
+Downloaded frames are unprojected camera-geometry rasters. Opt-in projection
+is the `lroc-project` stage (`pipeline/lroc_project.py`): when USGS ISIS is on
+`PATH`, it runs `lronac2isis` → `spiceinit` → `cam2map` per asset and writes
+`project_manifest.json` plus `projected_*/<year>/*_map.cub`. CLI:
+`lroc-project` / `lroc-project-json`. Sample configs:
+`configs/run/lroc_nac_apollo17.{index,download,project}.json`. Missing ISIS →
+exit `1` with a clear error (no CI dependency). Shared-grid `render` of
+projected cubes remains deferred; not wired into `run-all`.
 
 ### Profiles and modes
 

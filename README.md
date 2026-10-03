@@ -22,7 +22,7 @@ manifests at every stage.
 | `lantmateriet` | **Supported** | Swedish STAC; Geotorget credentials |
 | `nls` | **Supported** | Finnish WCS; API key required; dedicated `nls-*-json` CLIs stop at download |
 | `sentinel2` | **Experimental** | Earth Search COGs; set `target_srs` / GDAL for cross-CRS |
-| `lroc_nac` | **Deferred** | PDS index + download only; ISIS projection/render out of scope |
+| `lroc_nac` | **Experimental** | PDS index + download; optional ISIS `lroc-project` (cam2map); render still deferred |
 
 ## Quick start
 
@@ -75,6 +75,7 @@ Copy `.secret.template` → `.secret` for local keys (gitignored).
 |-------|----------|
 | index | `artifacts_*/index_manifest.json` |
 | download | `dataset_manifest_download.json` + `downloads_*/` |
+| lroc-project (opt-in) | `project_manifest.json` + `projected_*/**/*_map.cub` |
 | render | `dataset_manifest_render.json` + `rendered_*/year_YYYY.tif` |
 | validate | `validation_report.json` |
 
@@ -104,7 +105,18 @@ for search and download, and geotags WMS fallbacks in `EPSG:3006`. Preserve
 **Sentinel-2** — Element84 Earth Search; Copernicus terms apply. Prefer one
 representative scene per year via `provider_options` (cloud cover, target DOY).
 
-**LROC NAC** — lunar CRS `IAU_2015:30100`; index/download only until projection lands.
+**LROC NAC** — lunar CRS `IAU_2015:30100`. Index/download via ODE; optional
+post-download projection when USGS ISIS is on `PATH`:
+
+```bash
+# After index + download (sample Apollo 17 AOI configs):
+python -m satmap_dataset.cli lroc-project-json \
+  configs/run/lroc_nac_apollo17.project.json
+```
+
+Requires `lronac2isis`, `spiceinit`, and `cam2map` (USGS ISIS). Without ISIS the
+stage exits `1` with a clear manifest error (CI does not install ISIS). Shared-grid
+render of projected cubes is still deferred.
 
 ## Advanced: gmix / raw-export (sat_roma handoff)
 

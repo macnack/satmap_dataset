@@ -2,8 +2,9 @@
 
 Sources lunar NAC observations from the PDS Orbital Data Explorer REST API.
 Index enumerates every overlapping NAC observation across a lat/lon bbox and
-date range; download pulls the PDS frames. Map projection (ISIS cam2map) and
-render are intentionally out of scope for this provider.
+date range; download pulls the PDS frames. Map projection is the opt-in
+``lroc-project`` stage (``pipeline/lroc_project.py``, ISIS cam2map). Render of
+projected cubes onto a shared NN grid remains deferred.
 """
 
 from __future__ import annotations

@@ -433,3 +433,30 @@ class PipelineManifest(BaseModel):
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     run_parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class LrocProjectFailure(BaseModel):
+    """One failed frame in the LROC project stage."""
+
+    source: str
+    step: str
+    message: str
+
+
+class LrocProjectManifest(BaseModel):
+    """On-disk JSON contract for `project_manifest.json` (LROC ISIS project stage)."""
+
+    kind: Literal["lroc_project_manifest"] = "lroc_project_manifest"
+    stage: Literal["lroc_project"] = "lroc_project"
+    generated_at: datetime = Field(default_factory=_utc_now)
+    srs: str = "IAU_2015:30100"
+    project_root: str
+    source_download_manifest: str
+    assets_projected: list[str] = Field(default_factory=list)
+    assets_skipped: list[str] = Field(default_factory=list)
+    assets_failed: list[LrocProjectFailure] = Field(default_factory=list)
+    isis_tools: dict[str, str | None] = Field(default_factory=dict)
+    passed: bool = False
+    warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    run_parameters: dict[str, Any] = Field(default_factory=dict)
