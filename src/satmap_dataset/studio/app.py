@@ -13,7 +13,8 @@ from streamlit_folium import st_folium
 
 from satmap_dataset.cli import _slugify_location_name
 from satmap_dataset.models import DemAvailabilityReport, IndexManifest, YearAvailabilityReport
-from satmap_dataset.pipeline import dem_availability, index_builder, location_run, raw_export
+from satmap_dataset.pipeline import dem_availability, location_run, raw_export
+from satmap_dataset.providers import get_provider
 from satmap_dataset.studio.config_builders import (
     PROVIDER_PRESETS,
     build_dem_availability_config,
@@ -235,6 +236,7 @@ def _tab_location() -> None:
     st.subheader("Location & map")
     col1, col2 = st.columns(2)
     with col1:
+        prev_provider = st.session_state["provider"]
         st.session_state["provider"] = st.selectbox(
             "Provider",
             options=list(PROVIDER_PRESETS.keys()),
@@ -247,6 +249,17 @@ def _tab_location() -> None:
             }.get(p, p),
             help=PROVIDER,
         )
+        if st.session_state["provider"] != prev_provider:
+            # Provider-safe defaults: STAC providers use mode=stac; DEM is Geoportal-only.
+            if st.session_state["provider"] in {"lantmateriet", "sentinel2"}:
+                st.session_state["mode"] = "stac"
+                st.session_state["run_dem"] = False
+            elif st.session_state["provider"] == "nls":
+                st.session_state["mode"] = "hybrid"
+                st.session_state["run_dem"] = False
+            else:
+                st.session_state["mode"] = "hybrid"
+                st.session_state["run_dem"] = True
         st.session_state["location_name"] = st.text_input(
             "Location name",
             st.session_state["location_name"],
@@ -395,9 +408,14 @@ def _tab_settings() -> None:
             index=0 if st.session_state["profile"] == "train" else 1,
             help=PROFILE,
         )
+        dem_supported = st.session_state["provider"] == "geoportal"
+        if not dem_supported:
+            st.session_state["run_dem"] = False
+            st.caption("DEM layer is Geoportal-only (Polish NMT/NMPT).")
         st.session_state["run_dem"] = st.checkbox(
             "DEM layer",
-            value=st.session_state["run_dem"],
+            value=bool(st.session_state["run_dem"]) and dem_supported,
+            disabled=not dem_supported,
             help=RUN_DEM,
         )
         st.session_state["run_osm"] = st.checkbox(
@@ -544,29 +562,32 @@ def _tab_availability() -> None:
             return
 
         def run_index() -> tuple[int, Path]:
-            return index_builder.run(config)
+            return get_provider(config.provider).index(config)
 
         job = Job("index")
         st.session_state["active_job"] = job
         job.start(run_index)
         st.rerun()
 
-    if st.button("Check DEM availability", help=CHECK_DEM):
-        payload = _current_location_payload()
-        base_json = resolve_base_json(payload["provider"], REPO_ROOT)
-        try:
-            config = build_dem_availability_config(payload, base_json)
-        except (ValidationError, ValueError) as exc:
-            st.error(f"Invalid config: {exc}")
-            return
+    if st.session_state["provider"] == "geoportal":
+        if st.button("Check DEM availability", help=CHECK_DEM):
+            payload = _current_location_payload()
+            base_json = resolve_base_json(payload["provider"], REPO_ROOT)
+            try:
+                config = build_dem_availability_config(payload, base_json)
+            except (ValidationError, ValueError) as exc:
+                st.error(f"Invalid config: {exc}")
+                return
 
-        def run_dem_avail() -> tuple[int, Path]:
-            return dem_availability.run(config)
+            def run_dem_avail() -> tuple[int, Path]:
+                return dem_availability.run(config)
 
-        job = Job("dem_availability")
-        st.session_state["active_job"] = job
-        job.start(run_dem_avail)
-        st.rerun()
+            job = Job("dem_availability")
+            st.session_state["active_job"] = job
+            job.start(run_dem_avail)
+            st.rerun()
+    else:
+        st.caption("DEM availability probe is Geoportal-only.")
 
     job = _active_job()
     if job and job.state.status in {JobStatus.SUCCESS, JobStatus.FAILED}:

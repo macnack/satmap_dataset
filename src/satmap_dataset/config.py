@@ -128,6 +128,15 @@ class DownloadConfig(BaseModel):
             allowed_modes = {"wms_tiled", "wfs_render", "hybrid"}
             if self.mode not in allowed_modes:
                 raise ValueError(f"mode must be one of {sorted(allowed_modes)} for provider=geoportal")
+        elif self.provider in {PROVIDER_LANTMATERIET, PROVIDER_SENTINEL2}:
+            allowed_modes = {"stac", "hybrid"}
+            if self.mode not in allowed_modes:
+                raise ValueError(
+                    f"mode must be one of {sorted(allowed_modes)} for provider={self.provider}"
+                )
+            # Hybrid is accepted as a Studio/CLI alias for STAC acquisition.
+            if self.mode == "hybrid":
+                self.mode = "stac"
         allowed_profiles = {"train", "reference"}
         if self.profile not in allowed_profiles:
             raise ValueError(f"profile must be one of {sorted(allowed_profiles)}")
@@ -300,6 +309,14 @@ class RunConfig(BaseModel):
             allowed_modes = {"wms_tiled", "wfs_render", "hybrid"}
             if self.mode not in allowed_modes:
                 raise ValueError(f"mode must be one of {sorted(allowed_modes)} for provider=geoportal")
+        elif self.provider in {PROVIDER_LANTMATERIET, PROVIDER_SENTINEL2}:
+            allowed_modes = {"stac", "hybrid"}
+            if self.mode not in allowed_modes:
+                raise ValueError(
+                    f"mode must be one of {sorted(allowed_modes)} for provider={self.provider}"
+                )
+            if self.mode == "hybrid":
+                self.mode = "stac"
         allowed_profiles = {"train", "reference"}
         if self.profile not in allowed_profiles:
             raise ValueError(f"profile must be one of {sorted(allowed_profiles)}")
