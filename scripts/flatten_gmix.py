@@ -6,7 +6,8 @@ equal-dim season stacks to:
 
     <raw_root>/<provider>/<area>/<cellkey>/year_YYYY.{tif,tfw,prj}
 
-sat_roma's training data root (`~/Github/sat_data`) consumes flat cell dirs:
+sat_roma's training data root (`$SATMAP_GMIX_DEST` or `~/sat_data`) consumes
+flat cell dirs:
 
     <dest>/<provider>_<area>_<cellkey>_gmix/year_YYYY.{tif,tfw,prj}
 
@@ -34,7 +35,12 @@ YEAR_SUFFIXES = (".tif", ".tfw", ".prj")
 
 def _default_raw_root() -> Path:
     env = os.environ.get("SATMAP_RAW_ROOT")
-    return Path(env).expanduser() if env else Path("~/Github/sat_data_raw").expanduser()
+    return Path(env).expanduser() if env else Path("~/sat_data_raw").expanduser()
+
+
+def _default_gmix_dest() -> Path:
+    env = os.environ.get("SATMAP_GMIX_DEST")
+    return Path(env).expanduser() if env else Path("~/sat_data").expanduser()
 
 
 def _slugify(value: str) -> str:
@@ -59,9 +65,10 @@ def main() -> int:
     p.add_argument("--provider", default=None)
     p.add_argument("--area", default=None, help="Area slug, e.g. wroclaw_15km2")
     p.add_argument("--raw-root", type=Path, default=_default_raw_root(),
-                   help="world_window export root (default: $SATMAP_RAW_ROOT or ~/Github/sat_data_raw)")
-    p.add_argument("--dest", type=Path, default=Path("~/Github/sat_data").expanduser(),
-                   help="sat_data root that receives <provider>_<area>_<cellkey>_gmix dirs")
+                   help="world_window export root (default: $SATMAP_RAW_ROOT or ~/sat_data_raw)")
+    p.add_argument("--dest", type=Path, default=_default_gmix_dest(),
+                   help="sat_data root that receives <provider>_<area>_<cellkey>_gmix dirs "
+                        "(default: $SATMAP_GMIX_DEST or ~/sat_data)")
     p.add_argument("--link-mode", choices=("copy", "symlink"), default="copy")
     p.add_argument("--overwrite", action="store_true", help="replace existing gmix cell dirs")
     args = p.parse_args()

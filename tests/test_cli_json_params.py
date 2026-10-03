@@ -468,7 +468,10 @@ def test_summary_locations_shows_key_fields(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 0
-    normalized = " ".join(result.stdout.split())
+    import re
+
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
+    normalized = " ".join(plain.split())
     assert "Locations summary: 2 files" in normalized
     assert "Alpha" in normalized
     assert "Beta" in normalized

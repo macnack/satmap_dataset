@@ -1,1 +1,1 @@
-"""Geoportal integration stubs for Phase 1."""
+"""Polish Geoportal (PZGiK) WFS/WMS/WCS clients and helpers."""

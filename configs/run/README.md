@@ -133,7 +133,8 @@ Alias behavior for `locations_4`/`locations_2`:
 
 For locations that opt in to `provider` + `cell_mode: "world_window"` +
 `equalize_gsd: true` (e.g. `locations/wroclaw_15km2.json`), the `gmix` recipes
-build flat `~/Github/sat_data/<provider>_<area>_<cellkey>_gmix/` cells. This path
+build flat `$SATMAP_GMIX_DEST/<provider>_<area>_<cellkey>_gmix/` cells
+(default `~/sat_data`). This path
 **skips render** and works from native download tiles; see the "Cross-GSD `gmix`
 cells" section of the top-level `README.md` for details.
 

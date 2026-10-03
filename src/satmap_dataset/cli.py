@@ -561,16 +561,21 @@ def summary_locations_command(
     location_files = _location_files_or_exit(locations_dir)
     repo_root = base_json.resolve().parents[2] if len(base_json.resolve().parents) >= 3 else Path.cwd().resolve()
 
-    output_console = Console()
+    # Wide, colorless console so year ranges like "2014-2016 (3)" stay intact and
+    # tests/CI can match plain text. FORCE_COLOR overrides no_color alone — pin
+    # color_system=None as well.
+    output_console = Console(
+        width=220, force_terminal=True, no_color=True, color_system=None
+    )
     table = Table(show_header=True, header_style="bold")
-    table.add_column("File")
-    table.add_column("Location")
-    table.add_column("Requested")
-    table.add_column("Available")
-    table.add_column("Area km2")
-    table.add_column("Px/m")
-    table.add_column("Downloaded")
-    table.add_column("Rendered")
+    table.add_column("File", overflow="fold")
+    table.add_column("Location", overflow="fold")
+    table.add_column("Requested", overflow="fold", no_wrap=True)
+    table.add_column("Available", overflow="fold", no_wrap=True)
+    table.add_column("Area km2", overflow="fold")
+    table.add_column("Px/m", overflow="fold")
+    table.add_column("Downloaded", overflow="fold")
+    table.add_column("Rendered", overflow="fold")
 
     for location_json in location_files:
         location_payload = _load_params_json_dict(location_json)
@@ -1962,7 +1967,7 @@ def raw_export_command(
     provider: str = typer.Option("geoportal", help="geoportal|lantmateriet|nls (sentinel2 rejected)."),
     area: str = typer.Option(..., help="Area slug (output namespace under <raw_root>/<provider>/)."),
     download_root: Path = typer.Option(..., help="downloads_<slug> root with <year>/*.tif."),
-    raw_root: Path | None = typer.Option(None, help="Shared sat_data_raw root (default: $SATMAP_RAW_ROOT or ~/Github/sat_data_raw)."),
+    raw_root: Path | None = typer.Option(None, help="Shared sat_data_raw root (default: $SATMAP_RAW_ROOT or ~/sat_data_raw)."),
     download_manifest: Path | None = typer.Option(None, help="Optional download manifest for provenance."),
     min_coverage: float | None = typer.Option(None, help="Override per-provider coverage gate (0,1]."),
     link_mode: str = typer.Option("symlink", help="symlink|copy for exported native tiles."),
@@ -2058,7 +2063,7 @@ def raw_export_all_location_json_command(
 
 @app.command("raw-test-manifest")
 def raw_test_manifest_command(
-    raw_root: Path | None = typer.Option(None, help="Shared sat_data_raw root (default: $SATMAP_RAW_ROOT or ~/Github/sat_data_raw)."),
+    raw_root: Path | None = typer.Option(None, help="Shared sat_data_raw root (default: $SATMAP_RAW_ROOT or ~/sat_data_raw)."),
     out: Path | None = typer.Option(None, help="Output split manifest path (default: <raw_root>/test_manifest.yaml)."),
     min_years: int = typer.Option(2, help="Minimum seasons per kept cell."),
 ) -> None:

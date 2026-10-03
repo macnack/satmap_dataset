@@ -1,10 +1,15 @@
+# Prefer: pip install -e .
+# This file mirrors [project] dependencies in pyproject.toml for environments
+# that still use requirements.txt.
 httpx
 aiofiles
 numpy
 pydantic>=2
+pyproj
 typer
 rich
 Pillow
 pyvips
 tifffile
 imagecodecs
+PyYAML
