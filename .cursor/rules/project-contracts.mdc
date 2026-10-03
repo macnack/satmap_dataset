@@ -19,8 +19,8 @@ Every pipeline stage is `run(config) -> tuple[int, Path]` writing one JSON manif
 
 When changing stage behavior, update reuse predicates or the orchestrator silently keeps stale outputs:
 
-- `_can_reuse_index`: year range, bbox, srs, strict/min, **provider**, geoportal **mode** (WMS-only stub vs real WFS), `wfs_bbox_axes_swapped` vs `geo.bbox.wfs_query_axes_swapped(srs)`, tile bboxes not axis-swapped
-- `_can_reuse_download`: provider, mode/profile, `force_wms_years`, asset paths exist on disk
+- `_can_reuse_index`: year range, bbox, srs, strict/min, **provider**, **`provider_options` fingerprint** (missing/mismatch → non-reusable), geoportal **mode** (WMS-only stub vs real WFS), `wfs_bbox_axes_swapped` vs `geo.bbox.wfs_query_axes_swapped(srs)`, tile bboxes not axis-swapped
+- `_can_reuse_download`: provider, **`provider_options` fingerprint** (missing/mismatch → non-reusable), mode/profile, `force_wms_years`, asset paths exist on disk
 
 ## Orchestrator
 

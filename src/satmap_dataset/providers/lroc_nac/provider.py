@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 import httpx
 
 from satmap_dataset.config import DownloadConfig, IndexConfig
+from satmap_dataset.fingerprint import fingerprint_provider_options
 from satmap_dataset.io.atomic import write_stream_atomic
 from satmap_dataset.models import (
     IndexManifest,
@@ -217,6 +218,7 @@ class LrocNacProvider(Provider):
             warnings=list(warnings) + list(policy.warnings),
             run_parameters=config.model_dump(mode="json"),
             provider_metadata=provider_metadata,
+            provider_options_fingerprint=fingerprint_provider_options(config.provider_options),
         )
         availability = YearAvailabilityReport(
             year_start=config.year_start, year_end=config.year_end,
@@ -336,6 +338,7 @@ class LrocNacProvider(Provider):
                 f"years_included={years_included_effective}"
             ),
             run_parameters=config.model_dump(mode="json"),
+            provider_options_fingerprint=fingerprint_provider_options(config.provider_options),
             provider_metadata={"failed_urls": failed},
         )
         config.output_json.parent.mkdir(parents=True, exist_ok=True)

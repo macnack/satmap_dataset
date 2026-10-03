@@ -14,6 +14,7 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, T
 import tifffile
 
 from satmap_dataset.config import DownloadConfig
+from satmap_dataset.fingerprint import fingerprint_provider_options
 from satmap_dataset.geo.bbox import overlap_area
 from satmap_dataset.models import IndexManifest, LayerManifest
 
@@ -789,6 +790,7 @@ def run(config: DownloadConfig) -> tuple[int, Path]:
             f"missing_year_outputs={missing_year_outputs} forced_wms_years={forced_wms_years}"
         ),
         run_parameters=run_parameters,
+        provider_options_fingerprint=fingerprint_provider_options(config.provider_options),
     )
     _write_json(config.output_json, manifest)
 

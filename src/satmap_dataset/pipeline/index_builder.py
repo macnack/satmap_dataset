@@ -9,6 +9,7 @@ import logging
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 
 from satmap_dataset.config import IndexConfig
+from satmap_dataset.fingerprint import fingerprint_provider_options
 from satmap_dataset.geo.bbox import wfs_query_axes_swapped, wfs_query_bbox_str
 from satmap_dataset.geoportal.http import RetryPolicy
 from satmap_dataset.geoportal.wfs_client import get_capabilities, get_year_tiles
@@ -276,6 +277,8 @@ def run(config: IndexConfig) -> tuple[int, Path]:
         aoi_preview_html=aoi_preview_html,
         aoi_preview_png=aoi_preview_png,
         run_parameters=run_parameters,
+        provider=config.provider,
+        provider_options_fingerprint=fingerprint_provider_options(config.provider_options),
     )
     year_report = YearAvailabilityReport(
         year_start=config.year_start,

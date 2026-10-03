@@ -35,6 +35,7 @@ from urllib.parse import urlparse
 import httpx
 
 from satmap_dataset.config import DownloadConfig, IndexConfig
+from satmap_dataset.fingerprint import fingerprint_provider_options
 from satmap_dataset.geoportal.http import RetryPolicy
 from satmap_dataset.models import (
     IndexManifest,
@@ -474,6 +475,7 @@ class Sentinel2Provider(Provider):
             warnings=combined_warnings,
             run_parameters=config.model_dump(mode="json"),
             provider_metadata=provider_metadata,
+            provider_options_fingerprint=fingerprint_provider_options(config.provider_options),
         )
 
     def download(self, config: DownloadConfig) -> tuple[int, Path]:
@@ -598,6 +600,7 @@ class Sentinel2Provider(Provider):
                 f"years_included={years_included_effective}"
             ),
             run_parameters=config.model_dump(mode="json"),
+            provider_options_fingerprint=fingerprint_provider_options(config.provider_options),
             provider_metadata=index_manifest.provider_metadata,
         )
         config.output_json.parent.mkdir(parents=True, exist_ok=True)

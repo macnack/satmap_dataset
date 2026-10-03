@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 from satmap_dataset.config import DownloadConfig, IndexConfig, RenderConfig, RunConfig
+from satmap_dataset.fingerprint import fingerprint_provider_options
 from satmap_dataset.geo.bbox import (
     collect_tile_bbox_samples,
     parse as parse_bbox,
@@ -54,8 +55,17 @@ def _is_wms_only_stub_index(manifest: IndexManifest) -> bool:
     return _WMS_ONLY_INDEX_WARNING in (manifest.warnings or [])
 
 
+def _provider_options_match(manifest_fingerprint: str | None, config: RunConfig) -> bool:
+    """Reject reuse when fingerprint is missing or differs from current options."""
+    if not manifest_fingerprint:
+        return False
+    return manifest_fingerprint == fingerprint_provider_options(config.provider_options)
+
+
 def _can_reuse_index(manifest: IndexManifest, config: RunConfig) -> bool:
     if manifest.provider != config.provider:
+        return False
+    if not _provider_options_match(manifest.provider_options_fingerprint, config):
         return False
     base_match = (
         manifest.passed
@@ -116,6 +126,8 @@ def _can_reuse_download(
         return False
     if manifest.provider != config.provider:
         return False
+    if not _provider_options_match(manifest.provider_options_fingerprint, config):
+        return False
     if config.provider == "geoportal" and manifest.mode != config.mode:
         return False
     if not _same_path_ref(manifest.source_manifest, index_output, download_output.parent):
@@ -172,6 +184,7 @@ def _write_wms_only_index(
         warnings=[_WMS_ONLY_INDEX_WARNING],
         run_parameters=run_parameters,
         provider=config.provider,
+        provider_options_fingerprint=fingerprint_provider_options(config.provider_options),
     )
     year_report = YearAvailabilityReport(
         year_start=config.year_start,
