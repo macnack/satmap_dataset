@@ -28,6 +28,8 @@ One entry: `pipeline/orchestrator.run(PipelineConfig) -> (exit_code, pipeline_ma
 RGB defines `ReferenceGrid`; optional DEM/OSM align to it; optional `run_validate`.
 `run_all.run` / `location_run.run_location` are thin wrappers preserving CLI return paths.
 
+`run-all-location-json` skips a location only when `validation_report.json` has `passed=true` **and** `config_hash` matches `io.config_hash.run_config_hash(RunConfig)` for the current merged config. Missing/mismatched hash ⇒ do not skip.
+
 ## Downloads
 
 Stream to `.part`, rename on success (`satmap_dataset.io.atomic`). Never write truncated files to final paths — reuse checks treat any non-empty file as complete.

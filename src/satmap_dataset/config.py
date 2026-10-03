@@ -239,6 +239,8 @@ class ValidateConfig(BaseModel):
     strict_years: bool = False
     min_years: int = Field(default=1, ge=1)
     output_json: Path = Path("artifacts/validation_report.json")
+    # Optional RunConfig fingerprint persisted onto ValidationReport.
+    config_hash: str | None = None
 
     @field_validator("requested_years")
     @classmethod
