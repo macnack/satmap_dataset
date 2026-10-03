@@ -27,6 +27,11 @@ def test_sentinel2_rejected():
         RawExportConfig(**_base(provider="sentinel2"))
 
 
+def test_naip_rejected():
+    with pytest.raises(ValidationError):
+        RawExportConfig(**_base(provider="naip"))
+
+
 def test_unknown_provider_rejected():
     with pytest.raises(ValidationError):
         RawExportConfig(**_base(provider="bogus"))

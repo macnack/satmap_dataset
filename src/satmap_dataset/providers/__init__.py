@@ -26,7 +26,11 @@ def get_provider(name: str) -> Provider:
         from satmap_dataset.providers.nls import NlsProvider
 
         return NlsProvider()
+    if name == "naip":
+        from satmap_dataset.providers.naip import NaipProvider
+
+        return NaipProvider()
     raise ValueError(
         f"Unknown provider: {name!r}. Expected 'geoportal', 'lantmateriet', "
-        "'sentinel2', 'lroc_nac', or 'nls'."
+        "'sentinel2', 'lroc_nac', 'nls', or 'naip'."
     )

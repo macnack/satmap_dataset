@@ -246,6 +246,7 @@ def _tab_location() -> None:
                 "lantmateriet": "Sweden — Lantmäteriet",
                 "nls": "Finland — NLS (API key)",
                 "sentinel2": "Sentinel-2 (no token)",
+                "naip": "US NAIP (Planetary Computer, no token)",
             }.get(p, p),
             help=PROVIDER,
         )

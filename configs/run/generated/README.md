@@ -19,7 +19,7 @@ python scripts/merge_json_config.py \
   --out configs/run/generated/<location>.run.json
 ```
 
-Replace `<provider>` with `geoportal`, `lantmateriet`, `sentinel2`, etc., and
+Replace `<provider>` with `geoportal`, `lantmateriet`, `sentinel2`, `naip`, etc., and
 `<location>` with the location stem under `configs/run/locations/`.
 
 ## Smoke files

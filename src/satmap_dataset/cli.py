@@ -650,7 +650,7 @@ def index_command(
     provider: str = typer.Option(
         "geoportal",
         "--provider",
-        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+        help="Data provider: geoportal, lantmateriet, nls, sentinel2, lroc_nac, or naip.",
     ),
 ) -> None:
     try:
@@ -752,7 +752,7 @@ def download_command(
     provider: str = typer.Option(
         "geoportal",
         "--provider",
-        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+        help="Data provider: geoportal, lantmateriet, nls, sentinel2, lroc_nac, or naip.",
     ),
 ) -> None:
     try:
@@ -1019,7 +1019,7 @@ def run_command(
     provider: str = typer.Option(
         "geoportal",
         "--provider",
-        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+        help="Data provider: geoportal, lantmateriet, nls, sentinel2, lroc_nac, or naip.",
     ),
 ) -> None:
     try:
@@ -1964,7 +1964,10 @@ def nls_run_json(config_json: Path = typer.Argument(..., exists=True)) -> None:
 
 @app.command("raw-export")
 def raw_export_command(
-    provider: str = typer.Option("geoportal", help="geoportal|lantmateriet|nls (sentinel2 rejected)."),
+    provider: str = typer.Option(
+        "geoportal",
+        help="geoportal|lantmateriet|nls|lroc_nac (sentinel2/naip rejected).",
+    ),
     area: str = typer.Option(..., help="Area slug (output namespace under <raw_root>/<provider>/)."),
     download_root: Path = typer.Option(..., help="downloads_<slug> root with <year>/*.tif."),
     raw_root: Path | None = typer.Option(None, help="Shared sat_data_raw root (default: $SATMAP_RAW_ROOT or ~/sat_data_raw)."),
