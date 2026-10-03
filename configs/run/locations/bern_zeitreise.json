@@ -1,0 +1,19 @@
+{
+  "location_name": "Bern Zeitreise",
+  "center_lat": 46.9480,
+  "center_lon": 7.4474,
+  "area_km2": 4.0,
+  "provider": "swisstopo",
+  "srs": "EPSG:2056",
+  "target_srs": "EPSG:2056",
+  "year_start": 1946,
+  "year_end": 2024,
+  "min_years": 10,
+  "strict_years": false,
+  "mode": "wms_tiled",
+  "px_per_meter": 1.0,
+  "provider_options": {
+    "wms_layer": "ch.swisstopo.swissimage-product",
+    "max_wms_dim_px": 2048
+  }
+}

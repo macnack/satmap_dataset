@@ -10,6 +10,7 @@ are responsible for compliance when you run the pipeline.
 | Lantmäteriet (Sweden) | STAC orthophoto download | Attribution required (`© Lantmäteriet`). Geotorget subscription may be required even when fees are 0 SEK. Annual WMS view service is a separate paid product. |
 | NLS / Maanmittauslaitos (Finland) | Orthophoto WCS | Often CC BY 4.0; requires a free API key. Preserve attribution. |
 | Copernicus Sentinel-2 | L2A visual COGs via Earth Search | [Copernicus open data terms](https://sentinels.copernicus.eu/web/sentinel/terms-conditions). Cite: *Contains modified Copernicus Sentinel data [year]*. |
+| swisstopo SWISSIMAGE Zeitreise | Historical + modern Swiss aerial orthophotos via WMS/WMTS | [geo.admin.ch terms of use](https://www.geo.admin.ch/terms-of-use); attribute © swisstopo. |
 | LROC NAC / PDS ODE | Lunar frames | NASA PDS data policies; projection tools (ISIS) are separate. |
 | OpenStreetMap / Overpass | Label rasters | [ODbL](https://www.openstreetmap.org/copyright); attribute OSM contributors. |
 

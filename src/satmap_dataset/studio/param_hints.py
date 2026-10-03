@@ -2,8 +2,8 @@
 
 PROVIDER = (
     "Orthophoto source. Sets the base config JSON, native CRS (EPSG:2180 Poland, "
-    "EPSG:3006 Sweden, EPSG:3067 Finland, or UTM for Sentinel-2), and whether "
-    "credentials are required."
+    "EPSG:3006 Sweden, EPSG:3067 Finland, EPSG:2056 Switzerland, or UTM for "
+    "Sentinel-2), and whether credentials are required."
 )
 LOCATION_NAME = (
     "Human-readable label used to derive output folder names "

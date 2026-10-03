@@ -86,6 +86,13 @@ def _can_reuse_index(manifest: IndexManifest, config: RunConfig) -> bool:
             manifest.wfs_bbox_axes_swapped == wfs_query_axes_swapped(config.srs)
             and not _index_manifest_has_swapped_tile_bboxes(manifest)
         )
+    if config.provider == "swisstopo":
+        stored_opts = (manifest.run_parameters or {}).get("provider_options") or {}
+        cfg_opts = config.provider_options or {}
+        for key in ("wmts_capabilities_url", "wms_url", "wms_layer"):
+            if str(stored_opts.get(key) or "") != str(cfg_opts.get(key) or ""):
+                return False
+        return True
     return True
 
 
@@ -118,6 +125,16 @@ def _can_reuse_download(
         return False
     if config.provider == "geoportal" and manifest.mode != config.mode:
         return False
+    if config.provider == "swisstopo":
+        # hybrid aliases to wms_tiled in DownloadConfig/RunConfig.
+        expected_mode = "wms_tiled" if config.mode in {"hybrid", "wms_tiled"} else config.mode
+        if manifest.mode != expected_mode:
+            return False
+        stored_opts = (manifest.run_parameters or {}).get("provider_options") or {}
+        cfg_opts = config.provider_options or {}
+        for key in ("wms_url", "wms_layer", "max_wms_dim_px"):
+            if str(stored_opts.get(key) or "") != str(cfg_opts.get(key) or ""):
+                return False
     if not _same_path_ref(manifest.source_manifest, index_output, download_output.parent):
         return False
     if manifest.profile != config.profile:
