@@ -9,7 +9,8 @@ manifests at every stage.
 ## Features
 
 - Pipeline: **index → download → render → validate** (optional DEM / OSM / raw-export)
-- Providers: Geoportal (PL), Lantmäteriet (SE), NLS (FI), Sentinel-2, LROC NAC (lunar)
+- Providers: Geoportal (PL), Lantmäteriet (SE), NLS (FI), Sentinel-2, swisstopo
+  Zeitreise (CH, 1926+), LROC NAC (lunar)
 - Shared NN-ready grid (`RGB_U8` GeoTIFF) with Pydantic manifest contracts
 - Location JSON + `just` recipes for batch runs
 - Optional Streamlit UI (`satmap-studio`)
@@ -22,6 +23,7 @@ manifests at every stage.
 | `lantmateriet` | **Supported** | Swedish STAC; Geotorget credentials |
 | `nls` | **Supported** | Finnish WCS; API key required; dedicated `nls-*-json` CLIs stop at download |
 | `sentinel2` | **Experimental** | Earth Search COGs; set `target_srs` / GDAL for cross-CRS |
+| `swisstopo` | **Experimental** | SWISSIMAGE Zeitreise WMS/WMTS; multi-decade aerial (≈1926–present) |
 | `lroc_nac` | **Deferred** | PDS index + download only; ISIS projection/render out of scope |
 
 ## Quick start
@@ -104,6 +106,19 @@ for search and download, and geotags WMS fallbacks in `EPSG:3006`. Preserve
 **Sentinel-2** — Element84 Earth Search; Copernicus terms apply. Prefer one
 representative scene per year via `provider_options` (cloud cover, target DOY).
 
+**swisstopo (Switzerland)** — SWISSIMAGE *Zeitreise* / Journey through time.
+Anonymous WMS GetMap with `TIME=<year>` after indexing years from the public
+WMTS GetCapabilities Time dimension (typically **1926–present**, ~99 years).
+Native CRS `EPSG:2056` (LV95). Attribution: © swisstopo.
+Sample: `configs/run/base_swisstopo.json` +
+`configs/run/locations/bern_zeitreise.json`.
+
+```bash
+python -m satmap_dataset.cli index-location-json \
+  configs/run/locations/bern_zeitreise.json \
+  --base-json configs/run/base_swisstopo.json
+```
+
 **LROC NAC** — lunar CRS `IAU_2015:30100`; index/download only until projection lands.
 
 ## Advanced: gmix / raw-export (sat_roma handoff)
@@ -157,7 +172,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). CI runs on Python 3.10–3.12 with libvi
 
 ## Acknowledgments
 
-Polish GUGiK / Geoportal, Lantmäteriet, Maanmittauslaitos (NLS), Copernicus
-Sentinel program, NASA LROC / PDS, OpenStreetMap contributors. Raw-tile ingest
-core is ported from sat_roma (`romatch/datasets/raw_tiles.py`) with a satmap-only
-`world_window` extension.
+Polish GUGiK / Geoportal, Lantmäteriet, Maanmittauslaitos (NLS), swisstopo,
+Copernicus Sentinel program, NASA LROC / PDS, OpenStreetMap contributors.
+Raw-tile ingest core is ported from sat_roma (`romatch/datasets/raw_tiles.py`)
+with a satmap-only `world_window` extension.

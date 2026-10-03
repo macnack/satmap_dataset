@@ -12,13 +12,17 @@ PROVIDER_LANTMATERIET = "lantmateriet"
 PROVIDER_SENTINEL2 = "sentinel2"
 PROVIDER_NLS = "nls"
 PROVIDER_LROC_NAC = "lroc_nac"
+PROVIDER_SWISSTOPO = "swisstopo"
 ALLOWED_PROVIDERS = {
     PROVIDER_GEOPORTAL,
     PROVIDER_LANTMATERIET,
     PROVIDER_SENTINEL2,
     PROVIDER_NLS,
     PROVIDER_LROC_NAC,
+    PROVIDER_SWISSTOPO,
 }
+STAC_PROVIDERS = {PROVIDER_LANTMATERIET, PROVIDER_SENTINEL2}
+WMS_TILE_PROVIDERS = {PROVIDER_SWISSTOPO}
 
 
 def _validate_bbox(value: str) -> str:
@@ -38,6 +42,7 @@ def _validate_bbox(value: str) -> str:
 
 
 _NLS_NATIVE_SRS = "EPSG:3067"
+_SWISSTOPO_NATIVE_SRS = "EPSG:2056"
 
 
 def _validate_provider_srs(provider: str, srs: str) -> None:
@@ -51,6 +56,11 @@ def _validate_provider_srs(provider: str, srs: str) -> None:
         raise ValueError(
             f"provider='lroc_nac' requires a lunar IAU_2015:301xx CRS "
             f"(e.g. 'IAU_2015:30100'); got srs={srs!r}."
+        )
+    if provider == PROVIDER_SWISSTOPO and srs.upper() != _SWISSTOPO_NATIVE_SRS:
+        raise ValueError(
+            f"provider='swisstopo' requires srs='{_SWISSTOPO_NATIVE_SRS}' "
+            f"(SWISSIMAGE Zeitreise / LV95); got srs={srs!r}."
         )
 
 
@@ -128,7 +138,7 @@ class DownloadConfig(BaseModel):
             allowed_modes = {"wms_tiled", "wfs_render", "hybrid"}
             if self.mode not in allowed_modes:
                 raise ValueError(f"mode must be one of {sorted(allowed_modes)} for provider=geoportal")
-        elif self.provider in {PROVIDER_LANTMATERIET, PROVIDER_SENTINEL2}:
+        elif self.provider in STAC_PROVIDERS:
             allowed_modes = {"stac", "hybrid"}
             if self.mode not in allowed_modes:
                 raise ValueError(
@@ -137,6 +147,16 @@ class DownloadConfig(BaseModel):
             # Hybrid is accepted as a Studio/CLI alias for STAC acquisition.
             if self.mode == "hybrid":
                 self.mode = "stac"
+        elif self.provider in WMS_TILE_PROVIDERS:
+            allowed_modes = {"wms_tiled", "hybrid"}
+            if self.mode not in allowed_modes:
+                raise ValueError(
+                    f"mode must be one of {sorted(allowed_modes)} for provider={self.provider}"
+                )
+            if self.mode == "hybrid":
+                self.mode = "wms_tiled"
+            if self.bbox is None:
+                raise ValueError(f"bbox is required for provider={self.provider}")
         allowed_profiles = {"train", "reference"}
         if self.profile not in allowed_profiles:
             raise ValueError(f"profile must be one of {sorted(allowed_profiles)}")
@@ -305,11 +325,12 @@ class RunConfig(BaseModel):
             raise ValueError("sleep_max must be >= sleep_min")
         if self.target_bbox is not None:
             _validate_bbox(self.target_bbox)
+        _validate_provider_srs(self.provider, self.srs)
         if self.provider == PROVIDER_GEOPORTAL:
             allowed_modes = {"wms_tiled", "wfs_render", "hybrid"}
             if self.mode not in allowed_modes:
                 raise ValueError(f"mode must be one of {sorted(allowed_modes)} for provider=geoportal")
-        elif self.provider in {PROVIDER_LANTMATERIET, PROVIDER_SENTINEL2}:
+        elif self.provider in STAC_PROVIDERS:
             allowed_modes = {"stac", "hybrid"}
             if self.mode not in allowed_modes:
                 raise ValueError(
@@ -317,6 +338,14 @@ class RunConfig(BaseModel):
                 )
             if self.mode == "hybrid":
                 self.mode = "stac"
+        elif self.provider in WMS_TILE_PROVIDERS:
+            allowed_modes = {"wms_tiled", "hybrid"}
+            if self.mode not in allowed_modes:
+                raise ValueError(
+                    f"mode must be one of {sorted(allowed_modes)} for provider={self.provider}"
+                )
+            if self.mode == "hybrid":
+                self.mode = "wms_tiled"
         allowed_profiles = {"train", "reference"}
         if self.profile not in allowed_profiles:
             raise ValueError(f"profile must be one of {sorted(allowed_profiles)}")

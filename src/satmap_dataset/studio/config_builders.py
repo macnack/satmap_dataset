@@ -37,6 +37,11 @@ PROVIDER_PRESETS: dict[str, dict[str, str]] = {
         "srs": "EPSG:32633",
         "target_srs": "EPSG:32633",
     },
+    "swisstopo": {
+        "base_json": "configs/run/base_swisstopo.json",
+        "srs": "EPSG:2056",
+        "target_srs": "EPSG:2056",
+    },
 }
 
 
