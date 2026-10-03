@@ -3,8 +3,11 @@
 __all__ = [
     "downloader",
     "index_builder",
+    "location_run",
     "mosaic",
+    "orchestrator",
     "render",
+    "rgb_pipeline",
     "run_all",
     "validator",
 ]

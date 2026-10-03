@@ -47,7 +47,7 @@ def test_rgb_layer_manifest_carries_flat_target_fields(monkeypatch, tmp_path: Pa
         render_path.write_text(m.model_dump_json())
         return 0, render_path
 
-    monkeypatch.setattr("satmap_dataset.layers.rgb._run_rgb_pipeline", fake_run_rgb)
+    monkeypatch.setattr("satmap_dataset.layers.rgb.run_rgb_pipeline", fake_run_rgb)
     cfg = RunConfig(
         year_start=2024, year_end=2024, bbox="210300,521900,210500,522100",
         provider="geoportal", profile="reference",
@@ -138,7 +138,7 @@ def test_osm_run_rejects_unresolvable_srs(tmp_path: Path):
 
 def test_location_run_returns_most_severe_exit_code(monkeypatch, tmp_path: Path):
     """Fix #6: a later code-1 failure must not be masked by an earlier code-2."""
-    from satmap_dataset.pipeline import location_run
+    from satmap_dataset.pipeline import location_run, orchestrator
 
     grid = ReferenceGrid(bbox="0,0,1,1", width=10, height=10, srs="EPSG:2180")
 
@@ -156,7 +156,7 @@ def test_location_run_returns_most_severe_exit_code(monkeypatch, tmp_path: Path)
             return 0, rgb
 
     layers = {"geoportal_rgb": _Rgb(), "dem": _L(2), "osm": _L(1)}
-    monkeypatch.setattr(location_run, "get_layer", lambda n: layers[n])
+    monkeypatch.setattr(orchestrator, "get_layer", lambda n: layers[n])
 
     from satmap_dataset.config import RunConfig
 
