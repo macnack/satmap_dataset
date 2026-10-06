@@ -169,16 +169,43 @@ def _acquisition_year_for_item(item: stac.StacItem) -> int | None:
     return None
 
 
+_SIGN_RETRYABLE_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+
+
 async def _sign_planetary_computer_url(
-    client: httpx.AsyncClient, href: str, *, sas_url: str
+    client: httpx.AsyncClient,
+    href: str,
+    *,
+    sas_url: str,
+    retries: int = 3,
+    retry_delay: float = 1.0,
 ) -> str:
-    response = await client.get(sas_url, params={"href": href})
-    response.raise_for_status()
-    payload = response.json()
-    signed = payload.get("href")
-    if not isinstance(signed, str) or not signed:
-        raise RuntimeError(f"MPC sign endpoint returned no href: {payload!r}")
-    return signed
+    attempts = max(1, retries + 1)
+    for attempt in range(1, attempts + 1):
+        try:
+            response = await client.get(sas_url, params={"href": href})
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code not in _SIGN_RETRYABLE_STATUSES or attempt >= attempts:
+                raise
+            logger.warning(
+                "MPC sign attempt=%s status=%s href=%s",
+                attempt,
+                exc.response.status_code,
+                href,
+            )
+        except httpx.TransportError as exc:
+            if attempt >= attempts:
+                raise
+            logger.warning("MPC sign attempt=%s failed: %s", attempt, exc)
+        else:
+            payload = response.json()
+            signed = payload.get("href")
+            if not isinstance(signed, str) or not signed:
+                raise RuntimeError(f"MPC sign endpoint returned no href: {payload!r}")
+            return signed
+        await asyncio.sleep(retry_delay * (2 ** (attempt - 1)))
+    raise AssertionError("unreachable")
 
 
 class NaipProvider(Provider):
@@ -509,9 +536,13 @@ class NaipProvider(Provider):
                         if not ok and stac_host == STAC_HOST_PLANETARY_COMPUTER:
                             try:
                                 download_url = await _sign_planetary_computer_url(
-                                    client, url, sas_url=str(sas_url)
+                                    client,
+                                    url,
+                                    sas_url=str(sas_url),
+                                    retries=config.retries,
+                                    retry_delay=config.retry_delay,
                                 )
-                            except httpx.HTTPError as exc:
+                            except (httpx.HTTPError, RuntimeError) as exc:
                                 logger.warning("MPC sign failed for %s: %s", url, exc)
                                 async with lock:
                                     failed.append(url)

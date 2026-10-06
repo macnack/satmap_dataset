@@ -5,6 +5,9 @@ import json
 import sys
 from pathlib import Path
 
+import httpx
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -44,7 +47,7 @@ def test_download_signs_mpc_urls(monkeypatch, tmp_path: Path) -> None:
 
     signed_calls: list[str] = []
 
-    async def fake_sign(client, href, *, sas_url):
+    async def fake_sign(client, href, *, sas_url, **_kwargs):
         signed_calls.append(href)
         return signed
 
@@ -74,3 +77,63 @@ def test_download_signs_mpc_urls(monkeypatch, tmp_path: Path) -> None:
     assert payload["years_included"] == [2023]
     assert signed_calls == [unsigned]
     assert any(Path(a).exists() for a in payload["assets"])
+
+
+def _run_sign(handler, **kwargs) -> str:
+    async def _go() -> str:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await provider_module._sign_planetary_computer_url(
+                client, "https://blob/x.tif", sas_url="https://sign/v1", **kwargs
+            )
+
+    return asyncio.run(_go())
+
+
+def test_sign_retries_transient_gateway_errors(monkeypatch) -> None:
+    async def no_sleep(_delay):
+        return None
+
+    monkeypatch.setattr(provider_module.asyncio, "sleep", no_sleep)
+    statuses = [504, 503]
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if statuses:
+            return httpx.Response(statuses.pop(0))
+        return httpx.Response(200, json={"href": "https://blob/x.tif?sig=1"})
+
+    assert _run_sign(handler, retries=3, retry_delay=0.01) == "https://blob/x.tif?sig=1"
+    assert len(calls) == 3
+
+
+def test_sign_does_not_retry_client_errors(monkeypatch) -> None:
+    async def no_sleep(_delay):
+        return None
+
+    monkeypatch.setattr(provider_module.asyncio, "sleep", no_sleep)
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(403)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        _run_sign(handler, retries=3, retry_delay=0.01)
+    assert len(calls) == 1
+
+
+def test_sign_gives_up_after_retries(monkeypatch) -> None:
+    async def no_sleep(_delay):
+        return None
+
+    monkeypatch.setattr(provider_module.asyncio, "sleep", no_sleep)
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(504)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        _run_sign(handler, retries=2, retry_delay=0.01)
+    assert len(calls) == 3

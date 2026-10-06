@@ -83,6 +83,8 @@ def _center_mode_srs_supported(srs: str) -> bool:
         return True
     if normalized.startswith("EPSG:326") or normalized.startswith("EPSG:327"):
         return True
+    if normalized.startswith("EPSG:269") and normalized[5:].isdigit():
+        return 26901 <= int(normalized[5:]) <= 26923
     return False
 
 
@@ -169,7 +171,8 @@ def _resolve_bbox_input(
         if not _center_mode_srs_supported(normalized_srs):
             raise typer.BadParameter(
                 "Center mode currently supports EPSG:2180, EPSG:3006, EPSG:3067, "
-                f"and WGS84 UTM zones (EPSG:326NN/327NN), got --srs {srs}."
+                "WGS84 UTM zones (EPSG:326NN/327NN), and NAD83 UTM zones "
+                f"(EPSG:26901-26923), got --srs {srs}."
             )
         try:
             if rect_supplied:

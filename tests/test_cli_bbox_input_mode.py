@@ -77,6 +77,37 @@ def test_resolve_bbox_center_mode_requires_epsg2180() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("srs", "supported"),
+    [
+        ("EPSG:26918", True),
+        ("epsg:26901", True),
+        ("EPSG:26923", True),
+        ("EPSG:26900", False),
+        ("EPSG:26924", False),
+        ("EPSG:26918X", False),
+    ],
+)
+def test_center_mode_supports_nad83_utm_zones(srs: str, supported: bool) -> None:
+    assert cli._center_mode_srs_supported(srs) is supported
+
+
+def test_resolve_json_center_bbox_baltimore_naip_sample() -> None:
+    import json
+
+    location = json.loads(
+        (ROOT / "configs/run/locations/baltimore_naip.json").read_text(encoding="utf-8")
+    )
+    out = cli._resolve_json_center_bbox(dict(location), required=True)
+    minx, miny, maxx, maxy = (float(v) for v in out["bbox"].split(","))
+    assert out["srs"] == "EPSG:26918"
+    assert maxx - minx == pytest.approx(2000.0)
+    assert maxy - miny == pytest.approx(2000.0)
+    # Baltimore sits in UTM 18N: easting ~357 km, northing ~4347 km.
+    assert 350_000 < minx < 365_000
+    assert 4_340_000 < miny < 4_355_000
+
+
 def test_resolve_bbox_rectangular_mode(monkeypatch) -> None:
     monkeypatch.setattr(
         cli,
