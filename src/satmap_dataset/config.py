@@ -12,13 +12,24 @@ PROVIDER_LANTMATERIET = "lantmateriet"
 PROVIDER_SENTINEL2 = "sentinel2"
 PROVIDER_NLS = "nls"
 PROVIDER_LROC_NAC = "lroc_nac"
+PROVIDER_ESRI_WAYBACK = "esri_wayback"
 ALLOWED_PROVIDERS = {
     PROVIDER_GEOPORTAL,
     PROVIDER_LANTMATERIET,
     PROVIDER_SENTINEL2,
     PROVIDER_NLS,
     PROVIDER_LROC_NAC,
+    PROVIDER_ESRI_WAYBACK,
 }
+# Tile-service providers acquire with mode="wms_tiled"; "hybrid" is accepted as an alias.
+TILE_SERVICE_PROVIDERS = {PROVIDER_ESRI_WAYBACK}
+
+
+def _normalize_tile_service_mode(provider: str, mode: str) -> str:
+    allowed_modes = {"wms_tiled", "hybrid"}
+    if mode not in allowed_modes:
+        raise ValueError(f"mode must be one of {sorted(allowed_modes)} for provider={provider}")
+    return "wms_tiled"
 
 
 def _validate_bbox(value: str) -> str:
@@ -52,6 +63,13 @@ def _validate_provider_srs(provider: str, srs: str) -> None:
             f"provider='lroc_nac' requires a lunar IAU_2015:301xx CRS "
             f"(e.g. 'IAU_2015:30100'); got srs={srs!r}."
         )
+    if provider == PROVIDER_ESRI_WAYBACK:
+        upper = srs.upper()
+        if not upper.startswith("EPSG:") or upper in {"EPSG:4326", "EPSG:4258", "EPSG:4269"}:
+            raise ValueError(
+                "provider='esri_wayback' requires a projected EPSG CRS in metres "
+                f"(e.g. 'EPSG:3857', 'EPSG:2180', a UTM zone); got srs={srs!r}."
+            )
 
 
 class IndexConfig(BaseModel):
@@ -137,6 +155,10 @@ class DownloadConfig(BaseModel):
             # Hybrid is accepted as a Studio/CLI alias for STAC acquisition.
             if self.mode == "hybrid":
                 self.mode = "stac"
+        elif self.provider in TILE_SERVICE_PROVIDERS:
+            self.mode = _normalize_tile_service_mode(self.provider, self.mode)
+            if self.bbox is None:
+                raise ValueError(f"bbox is required for provider={self.provider}")
         allowed_profiles = {"train", "reference"}
         if self.profile not in allowed_profiles:
             raise ValueError(f"profile must be one of {sorted(allowed_profiles)}")
@@ -317,6 +339,9 @@ class RunConfig(BaseModel):
                 )
             if self.mode == "hybrid":
                 self.mode = "stac"
+        elif self.provider in TILE_SERVICE_PROVIDERS:
+            _validate_provider_srs(self.provider, self.srs)
+            self.mode = _normalize_tile_service_mode(self.provider, self.mode)
         allowed_profiles = {"train", "reference"}
         if self.profile not in allowed_profiles:
             raise ValueError(f"profile must be one of {sorted(allowed_profiles)}")

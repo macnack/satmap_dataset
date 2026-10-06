@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -86,7 +87,18 @@ def _can_reuse_index(manifest: IndexManifest, config: RunConfig) -> bool:
             manifest.wfs_bbox_axes_swapped == wfs_query_axes_swapped(config.srs)
             and not _index_manifest_has_swapped_tile_bboxes(manifest)
         )
+    if config.provider == "esri_wayback":
+        # Release filter, dedupe mode and probe zoom all change which versions
+        # the index selects, so any provider_options change invalidates it.
+        return _same_provider_options(manifest.run_parameters, config.provider_options)
     return True
+
+
+def _same_provider_options(run_parameters: dict | None, provider_options: dict | None) -> bool:
+    stored = (run_parameters or {}).get("provider_options") or {}
+    return json.dumps(stored, sort_keys=True, default=str) == json.dumps(
+        provider_options or {}, sort_keys=True, default=str
+    )
 
 
 def _asset_exists(asset: str, dataset_manifest_path: Path) -> bool:
@@ -118,6 +130,17 @@ def _can_reuse_download(
         return False
     if config.provider == "geoportal" and manifest.mode != config.mode:
         return False
+    if config.provider == "esri_wayback":
+        # Zoom derives from provider_options and px_per_meter; the stitched
+        # GeoTIFF covers the AOI bbox, so all three must match.
+        if manifest.mode != config.mode:
+            return False
+        if not _same_provider_options(manifest.run_parameters, config.provider_options):
+            return False
+        if manifest.px_per_meter != config.px_per_meter:
+            return False
+        if manifest.target_bbox != config.bbox or (manifest.target_srs or "").upper() != config.srs.upper():
+            return False
     if not _same_path_ref(manifest.source_manifest, index_output, download_output.parent):
         return False
     if manifest.profile != config.profile:

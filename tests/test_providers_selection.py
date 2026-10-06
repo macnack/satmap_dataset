@@ -53,3 +53,13 @@ def test_get_provider_returns_nls() -> None:
     assert isinstance(provider, Provider)
     assert provider.name == "nls"
     assert provider.default_target_srs == "EPSG:3067"
+
+
+def test_get_provider_returns_esri_wayback() -> None:
+    from satmap_dataset.providers.esri_wayback import EsriWaybackProvider
+
+    provider = get_provider("esri_wayback")
+    assert isinstance(provider, EsriWaybackProvider)
+    assert isinstance(provider, Provider)
+    assert provider.name == "esri_wayback"
+    assert provider.default_target_srs == "EPSG:3857"

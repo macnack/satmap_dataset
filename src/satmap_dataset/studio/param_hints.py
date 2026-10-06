@@ -2,8 +2,9 @@
 
 PROVIDER = (
     "Orthophoto source. Sets the base config JSON, native CRS (EPSG:2180 Poland, "
-    "EPSG:3006 Sweden, EPSG:3067 Finland, or UTM for Sentinel-2), and whether "
-    "credentials are required."
+    "EPSG:3006 Sweden, EPSG:3067 Finland, or UTM for Sentinel-2 / Esri Wayback), "
+    "and whether credentials are required. Esri Wayback is experimental and its "
+    "terms restrict downloading and ML training (docs/DATA_LICENSING.md)."
 )
 LOCATION_NAME = (
     "Human-readable label used to derive output folder names "

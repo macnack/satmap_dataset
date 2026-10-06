@@ -41,6 +41,7 @@ RGB acquisition goes through `providers.get_provider(name)`:
 | `lantmateriet` | Supported | Swedish STAC (+ optional paid WMS); `EPSG:3006` |
 | `nls` | Supported (download-first) | Finnish WCS/OAPIF; needs API key; `EPSG:3067` |
 | `sentinel2` | Experimental | STAC COGs; set `target_srs` carefully |
+| `esri_wayback` | Experimental | Esri Wayback WMTS; capture-year versions; EPSG:3857 tiles reprojected at render; restrictive Esri terms |
 | `lroc_nac` | Deferred | Lunar PDS index/download; projection/render out of scope |
 
 DEM/OSM today are Geoportal/Overpass-oriented stages, not full provider plugins.

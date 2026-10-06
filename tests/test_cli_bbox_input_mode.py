@@ -72,9 +72,24 @@ def test_resolve_bbox_center_mode_requires_epsg2180() -> None:
             center_lat=52.4012627,
             center_lon=16.9517999,
             square_km=4.0,
-            srs="EPSG:3857",
+            srs="EPSG:4326",
             required=True,
         )
+
+
+def test_resolve_bbox_center_mode_web_mercator_uses_ground_metres() -> None:
+    import math
+
+    bbox = cli._resolve_bbox_input(
+        bbox=None,
+        center_lat=52.233,
+        center_lon=20.985,
+        square_km=4.0,
+        srs="EPSG:3857",
+        required=True,
+    )
+    xmin, _ymin, xmax, _ymax = (float(v) for v in bbox.split(","))
+    assert xmax - xmin == pytest.approx(2000.0 / math.cos(math.radians(52.233)), abs=0.01)
 
 
 def test_resolve_bbox_rectangular_mode(monkeypatch) -> None:
