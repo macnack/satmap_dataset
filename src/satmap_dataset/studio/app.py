@@ -246,6 +246,7 @@ def _tab_location() -> None:
                 "lantmateriet": "Sweden — Lantmäteriet",
                 "nls": "Finland — NLS (API key)",
                 "sentinel2": "Sentinel-2 (no token)",
+                "esri_wayback": "Esri Wayback (experimental; restrictive licence)",
             }.get(p, p),
             help=PROVIDER,
         )
@@ -253,6 +254,9 @@ def _tab_location() -> None:
             # Provider-safe defaults: STAC providers use mode=stac; DEM is Geoportal-only.
             if st.session_state["provider"] in {"lantmateriet", "sentinel2"}:
                 st.session_state["mode"] = "stac"
+                st.session_state["run_dem"] = False
+            elif st.session_state["provider"] == "esri_wayback":
+                st.session_state["mode"] = "wms_tiled"
                 st.session_state["run_dem"] = False
             elif st.session_state["provider"] == "nls":
                 st.session_state["mode"] = "hybrid"

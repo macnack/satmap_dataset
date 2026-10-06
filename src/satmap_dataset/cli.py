@@ -74,7 +74,7 @@ def _print_availability_table(report) -> None:
         console.print(f"  [red]error:[/red] {combo}: {msg}")
 
 
-_CENTER_MODE_SUPPORTED_SRS = {"EPSG:2180", "EPSG:3006", "EPSG:3067"}
+_CENTER_MODE_SUPPORTED_SRS = {"EPSG:2180", "EPSG:3006", "EPSG:3067", "EPSG:3857"}
 
 
 def _center_mode_srs_supported(srs: str) -> bool:
@@ -123,8 +123,10 @@ def _bbox_from_center_rect(
     if width_meters <= 0 or height_meters <= 0:
         raise ValueError("width_meters and height_meters must be > 0")
     center_x, center_y = _lonlat_to_target_srs(center_lon, center_lat, target_srs)
-    half_w = width_meters / 2.0
-    half_h = height_meters / 2.0
+    # Web Mercator metres are stretched by 1/cos(lat); keep the AOI in ground metres.
+    stretch = 1.0 / math.cos(math.radians(center_lat)) if target_srs.upper() == "EPSG:3857" else 1.0
+    half_w = width_meters * stretch / 2.0
+    half_h = height_meters * stretch / 2.0
     return (
         f"{center_x - half_w:.3f},"
         f"{center_y - half_h:.3f},"
@@ -168,7 +170,7 @@ def _resolve_bbox_input(
         normalized_srs = srs.upper()
         if not _center_mode_srs_supported(normalized_srs):
             raise typer.BadParameter(
-                "Center mode currently supports EPSG:2180, EPSG:3006, EPSG:3067, "
+                "Center mode currently supports EPSG:2180, EPSG:3006, EPSG:3067, EPSG:3857, "
                 f"and WGS84 UTM zones (EPSG:326NN/327NN), got --srs {srs}."
             )
         try:
@@ -650,7 +652,7 @@ def index_command(
     provider: str = typer.Option(
         "geoportal",
         "--provider",
-        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+        help="Data provider: geoportal, lantmateriet, nls, sentinel2, lroc_nac, or esri_wayback (experimental; see docs/DATA_LICENSING.md).",
     ),
 ) -> None:
     try:
@@ -752,7 +754,7 @@ def download_command(
     provider: str = typer.Option(
         "geoportal",
         "--provider",
-        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+        help="Data provider: geoportal, lantmateriet, nls, sentinel2, lroc_nac, or esri_wayback (experimental; see docs/DATA_LICENSING.md).",
     ),
 ) -> None:
     try:
@@ -1019,7 +1021,7 @@ def run_command(
     provider: str = typer.Option(
         "geoportal",
         "--provider",
-        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+        help="Data provider: geoportal, lantmateriet, nls, sentinel2, lroc_nac, or esri_wayback (experimental; see docs/DATA_LICENSING.md).",
     ),
 ) -> None:
     try:

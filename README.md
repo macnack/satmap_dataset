@@ -9,7 +9,8 @@ manifests at every stage.
 ## Features
 
 - Pipeline: **index → download → render → validate** (optional DEM / OSM / raw-export)
-- Providers: Geoportal (PL), Lantmäteriet (SE), NLS (FI), Sentinel-2, LROC NAC (lunar)
+- Providers: Geoportal (PL), Lantmäteriet (SE), NLS (FI), Sentinel-2, Esri Wayback
+  (global, experimental), LROC NAC (lunar)
 - Shared NN-ready grid (`RGB_U8` GeoTIFF) with Pydantic manifest contracts
 - Location JSON + `just` recipes for batch runs
 - Optional Streamlit UI (`satmap-studio`)
@@ -22,6 +23,7 @@ manifests at every stage.
 | `lantmateriet` | **Supported** | Swedish STAC; Geotorget credentials |
 | `nls` | **Supported** | Finnish WCS; API key required; dedicated `nls-*-json` CLIs stop at download |
 | `sentinel2` | **Experimental** | Earth Search COGs; set `target_srs` / GDAL for cross-CRS |
+| `esri_wayback` | **Experimental** | Esri World Imagery Wayback (2014+), one version per capture year; EPSG:3857 tiles. **Esri terms prohibit downloading/storing tiles outside Esri Content Packages and AI/ML training outside Esri software** — see [DATA_LICENSING](docs/DATA_LICENSING.md#esri-world-imagery-wayback) |
 | `lroc_nac` | **Deferred** | PDS index + download only; ISIS projection/render out of scope |
 
 ## Quick start
@@ -104,6 +106,32 @@ for search and download, and geotags WMS fallbacks in `EPSG:3006`. Preserve
 **Sentinel-2** — Element84 Earth Search; Copernicus terms apply. Prefer one
 representative scene per year via `provider_options` (cloud cover, target DOY).
 
+**Esri World Imagery Wayback (experimental)** — every archived release of Esri
+World Imagery since 2014-02-20 (~200 WMTS layers). The index collapses releases
+into distinct imagery versions for the AOI (Esri `tilemap` local changes, tile
+content hash as fallback), reads each version's **capture date** / source /
+resolution from its metadata layer, and keeps one version per **capture year**
+(latest capture wins; alternatives recorded in `provider_metadata`). Download
+stitches EPSG:3857 tiles into a GeoTIFF; render reprojects to `target_srs` via
+gdalwarp. **Read [the licence notes](docs/DATA_LICENSING.md#esri-world-imagery-wayback)
+first** — Esri's terms do not permit this kind of bulk download or ML training
+without separate permission from Esri.
+
+```bash
+# Index only (lists releases -> distinct versions -> capture years)
+just index-location-json \
+  location_json=configs/run/locations/esri_wayback/warszawa_wola.json \
+  base_json=configs/run/base_esri_wayback.json
+
+# Index + download + render (EPSG:2180) + validate
+python -m satmap_dataset.cli run-location-json \
+  configs/run/locations/esri_wayback/warszawa_wola.json \
+  --base-json configs/run/base_esri_wayback.json
+```
+
+The sample lives under `configs/run/locations/esri_wayback/` so batch
+`*-all-location-json` runs over `configs/run/locations/` never hit Esri by accident.
+
 **LROC NAC** — lunar CRS `IAU_2015:30100`; index/download only until projection lands.
 
 ## Advanced: gmix / raw-export (sat_roma handoff)
@@ -157,7 +185,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). CI runs on Python 3.10–3.12 with libvi
 
 ## Acknowledgments
 
-Polish GUGiK / Geoportal, Lantmäteriet, Maanmittauslaitos (NLS), Copernicus
-Sentinel program, NASA LROC / PDS, OpenStreetMap contributors. Raw-tile ingest
+Polish GUGiK / Geoportal, Lantmäteriet, Maanmittauslaitos (NLS), Esri (World
+Imagery Wayback), Copernicus Sentinel program, NASA LROC / PDS, OpenStreetMap contributors. Raw-tile ingest
 core is ported from sat_roma (`romatch/datasets/raw_tiles.py`) with a satmap-only
 `world_window` extension.

@@ -124,6 +124,25 @@ distinct tile under its acquisition year — the multi-temporal axis);
 rasters — ISIS `cam2map` projection and render are a separate, deferred stage.
 Sample configs: `configs/run/lroc_nac_apollo17.{index,download}.json`.
 
+### Esri World Imagery Wayback provider (experimental, restrictive licence)
+
+`provider="esri_wayback"` (`providers/esri_wayback/`) indexes every release in
+the public Wayback WMTS GetCapabilities (~200 since 2014; release numbers are
+**not** chronological — always order by release date). The index collapses
+releases into distinct imagery versions for the AOI via Esri's
+`MapServer/tilemap/{M}/{z}/{y}/{x}` local-changes endpoint (`select` = release
+that owns the pixels), falling back to tile content hashes. It then reads
+capture date/source/resolution from each version's metadata MapServer
+(sublayer `23 - zoom`) and keeps one version per **capture year**.
+Download stitches EPSG:3857 JPEG tiles into a GeoTIFF; render reprojects via
+the existing gdalwarp path. `mode` is `wms_tiled` (`hybrid` aliases to it).
+Reuse predicates compare the full `provider_options` (+ `px_per_meter` for
+download). **Esri's terms prohibit downloading/storing tiles outside Esri
+Content Packages and AI/ML training outside Esri software**; see
+`docs/DATA_LICENSING.md`. Sample: `configs/run/base_esri_wayback.json` +
+`configs/run/locations/esri_wayback/warszawa_wola.json` (kept out of
+`configs/run/locations/*.json` batch globs on purpose).
+
 ### Profiles and modes
 
 - `mode`: `wfs_render` (WFS only), `wms_tiled` (WMS only — index step is stubbed via `_write_wms_only_index`), `hybrid` (default; WFS-first, WMS for missing years).

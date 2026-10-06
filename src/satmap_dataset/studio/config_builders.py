@@ -37,7 +37,14 @@ PROVIDER_PRESETS: dict[str, dict[str, str]] = {
         "srs": "EPSG:32633",
         "target_srs": "EPSG:32633",
     },
+    "esri_wayback": {
+        "base_json": "configs/run/base_esri_wayback.json",
+        "srs": "EPSG:32633",
+        "target_srs": "EPSG:32633",
+    },
 }
+# Global providers: AOI/render CRS is the UTM zone of the AOI center.
+UTM_PER_AOI_PROVIDERS = {"sentinel2", "esri_wayback"}
 
 
 def repo_root_from_base(base_json: Path) -> Path:
@@ -83,7 +90,7 @@ def build_location_payload(
     preset = PROVIDER_PRESETS[provider]
     srs = preset["srs"]
     target_srs = preset["target_srs"]
-    if provider == "sentinel2":
+    if provider in UTM_PER_AOI_PROVIDERS:
         utm = utm_epsg_for_lon_lat(center_lon, center_lat)
         srs = utm
         target_srs = utm

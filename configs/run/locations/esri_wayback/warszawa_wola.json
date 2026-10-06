@@ -1,0 +1,15 @@
+{
+  "location_name": "Warszawa Wola Wayback",
+  "center_lat": 52.2330,
+  "center_lon": 20.9850,
+  "area_km2": 4.0,
+  "provider": "esri_wayback",
+  "mode": "wms_tiled",
+  "srs": "EPSG:2180",
+  "target_srs": "EPSG:2180",
+  "px_per_meter": 1.0,
+  "year_start": 2010,
+  "year_end": 2026,
+  "min_years": 5,
+  "notes": "Experimental Esri Wayback sample (see docs/DATA_LICENSING.md). Wola business district: high-rise construction across many Wayback versions. Tiles are EPSG:3857; render reprojects to EPSG:2180."
+}
