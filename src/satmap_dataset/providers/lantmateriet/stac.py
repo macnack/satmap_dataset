@@ -109,7 +109,9 @@ def _extract_epsg(properties: dict[str, Any]) -> int | None:
 
 
 def _extract_year(properties: dict[str, Any]) -> int | None:
-    for key in ("acquisition_year", "year"):
+    # Prefer explicit acquisition-year fields (NAIP uses naip:year, which can
+    # differ from the datetime calendar year when flights slip).
+    for key in ("naip:year", "acquisition_year", "year"):
         value = properties.get(key)
         if isinstance(value, int):
             return value

@@ -1,0 +1,21 @@
+{
+  "location_name": "Baltimore NAIP",
+  "center_lat": 39.2686,
+  "center_lon": -76.6567,
+  "area_km2": 4.0,
+  "provider": "naip",
+  "srs": "EPSG:26918",
+  "target_srs": "EPSG:26918",
+  "year_start": 2015,
+  "year_end": 2023,
+  "min_years": 2,
+  "strict_years": false,
+  "mode": "stac",
+  "px_per_meter": 3.33,
+  "provider_options": {
+    "stac_host": "planetary_computer",
+    "preferred_asset_key": "image",
+    "target_month": 6,
+    "target_day": 15
+  }
+}

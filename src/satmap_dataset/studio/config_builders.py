@@ -14,7 +14,7 @@ from satmap_dataset.config import (
     RawExportConfig,
     RunConfig,
 )
-from satmap_dataset.studio.geo import utm_epsg_for_lon_lat
+from satmap_dataset.studio.geo import nad83_utm_epsg_for_lon_lat, utm_epsg_for_lon_lat
 
 PROVIDER_PRESETS: dict[str, dict[str, str]] = {
     "geoportal": {
@@ -36,6 +36,11 @@ PROVIDER_PRESETS: dict[str, dict[str, str]] = {
         "base_json": "configs/run/base_sentinel2.json",
         "srs": "EPSG:32633",
         "target_srs": "EPSG:32633",
+    },
+    "naip": {
+        "base_json": "configs/run/base_naip.json",
+        "srs": "EPSG:26918",
+        "target_srs": "EPSG:26918",
     },
 }
 
@@ -85,6 +90,10 @@ def build_location_payload(
     target_srs = preset["target_srs"]
     if provider == "sentinel2":
         utm = utm_epsg_for_lon_lat(center_lon, center_lat)
+        srs = utm
+        target_srs = utm
+    elif provider == "naip":
+        utm = nad83_utm_epsg_for_lon_lat(center_lon, center_lat)
         srs = utm
         target_srs = utm
 

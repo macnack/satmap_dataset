@@ -9,7 +9,7 @@ manifests at every stage.
 ## Features
 
 - Pipeline: **index → download → render → validate** (optional DEM / OSM / raw-export)
-- Providers: Geoportal (PL), Lantmäteriet (SE), NLS (FI), Sentinel-2, LROC NAC (lunar)
+- Providers: Geoportal (PL), Lantmäteriet (SE), NLS (FI), Sentinel-2, NAIP (US), LROC NAC (lunar)
 - Shared NN-ready grid (`RGB_U8` GeoTIFF) with Pydantic manifest contracts
 - Location JSON + `just` recipes for batch runs
 - Optional Streamlit UI (`satmap-studio`)
@@ -22,6 +22,7 @@ manifests at every stage.
 | `lantmateriet` | **Supported** | Swedish STAC; Geotorget credentials |
 | `nls` | **Supported** | Finnish WCS; API key required; dedicated `nls-*-json` CLIs stop at download |
 | `sentinel2` | **Experimental** | Earth Search COGs; set `target_srs` / GDAL for cross-CRS |
+| `naip` | **Experimental** | USGS NAIP via Planetary Computer STAC; anonymous SAS downloads |
 | `lroc_nac` | **Deferred** | PDS index + download only; ISIS projection/render out of scope |
 
 ## Quick start
@@ -104,6 +105,19 @@ for search and download, and geotags WMS fallbacks in `EPSG:3006`. Preserve
 **Sentinel-2** — Element84 Earth Search; Copernicus terms apply. Prefer one
 representative scene per year via `provider_options` (cloud cover, target DOY).
 
+**NAIP (US)** — USGS National Agriculture Imagery Program COGs via Microsoft
+Planetary Computer STAC (`collection=naip`, asset `image`). No API key.
+Picks one item per year closest to a leaf-on DOY (default June 15). Set
+`srs` / `target_srs` to the local NAD83 UTM zone (e.g. `EPSG:26918` for
+Maryland). Sample: `configs/run/base_naip.json` +
+`configs/run/locations/baltimore_naip.json`.
+
+```bash
+python -m satmap_dataset.cli index-location-json \
+  configs/run/locations/baltimore_naip.json \
+  --base-json configs/run/base_naip.json
+```
+
 **LROC NAC** — lunar CRS `IAU_2015:30100`; index/download only until projection lands.
 
 ## Advanced: gmix / raw-export (sat_roma handoff)
@@ -158,6 +172,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). CI runs on Python 3.10–3.12 with libvi
 ## Acknowledgments
 
 Polish GUGiK / Geoportal, Lantmäteriet, Maanmittauslaitos (NLS), Copernicus
-Sentinel program, NASA LROC / PDS, OpenStreetMap contributors. Raw-tile ingest
-core is ported from sat_roma (`romatch/datasets/raw_tiles.py`) with a satmap-only
-`world_window` extension.
+Sentinel program, USDA/USGS NAIP, NASA LROC / PDS, OpenStreetMap contributors.
+Raw-tile ingest core is ported from sat_roma (`romatch/datasets/raw_tiles.py`)
+with a satmap-only `world_window` extension.

@@ -12,13 +12,16 @@ PROVIDER_LANTMATERIET = "lantmateriet"
 PROVIDER_SENTINEL2 = "sentinel2"
 PROVIDER_NLS = "nls"
 PROVIDER_LROC_NAC = "lroc_nac"
+PROVIDER_NAIP = "naip"
 ALLOWED_PROVIDERS = {
     PROVIDER_GEOPORTAL,
     PROVIDER_LANTMATERIET,
     PROVIDER_SENTINEL2,
     PROVIDER_NLS,
     PROVIDER_LROC_NAC,
+    PROVIDER_NAIP,
 }
+STAC_PROVIDERS = {PROVIDER_LANTMATERIET, PROVIDER_SENTINEL2, PROVIDER_NAIP}
 
 
 def _validate_bbox(value: str) -> str:
@@ -128,7 +131,7 @@ class DownloadConfig(BaseModel):
             allowed_modes = {"wms_tiled", "wfs_render", "hybrid"}
             if self.mode not in allowed_modes:
                 raise ValueError(f"mode must be one of {sorted(allowed_modes)} for provider=geoportal")
-        elif self.provider in {PROVIDER_LANTMATERIET, PROVIDER_SENTINEL2}:
+        elif self.provider in STAC_PROVIDERS:
             allowed_modes = {"stac", "hybrid"}
             if self.mode not in allowed_modes:
                 raise ValueError(
@@ -309,7 +312,7 @@ class RunConfig(BaseModel):
             allowed_modes = {"wms_tiled", "wfs_render", "hybrid"}
             if self.mode not in allowed_modes:
                 raise ValueError(f"mode must be one of {sorted(allowed_modes)} for provider=geoportal")
-        elif self.provider in {PROVIDER_LANTMATERIET, PROVIDER_SENTINEL2}:
+        elif self.provider in STAC_PROVIDERS:
             allowed_modes = {"stac", "hybrid"}
             if self.mode not in allowed_modes:
                 raise ValueError(
@@ -584,8 +587,8 @@ class RawExportConfig(BaseModel):
     """Input config for the opt-in raw-export stage.
 
     Exports native download tiles into <raw_root>/<provider>/<area>/<year>/ and
-    ingests co-located season-cell stacks. sentinel2 is rejected (not a raw
-    orthophoto tile provider).
+    ingests co-located season-cell stacks. sentinel2 and naip are rejected (not
+    raw orthophoto tile providers in the sat_roma sense).
     """
 
     provider: str
@@ -606,8 +609,10 @@ class RawExportConfig(BaseModel):
     @field_validator("provider")
     @classmethod
     def validate_provider(cls, value: str) -> str:
-        if value == PROVIDER_SENTINEL2:
-            raise ValueError("provider 'sentinel2' is not a raw-orthophoto-tile provider")
+        if value in {PROVIDER_SENTINEL2, PROVIDER_NAIP}:
+            raise ValueError(
+                f"provider {value!r} is not a raw-orthophoto-tile provider"
+            )
         if value not in ALLOWED_PROVIDERS:
             raise ValueError(f"provider must be one of {sorted(ALLOWED_PROVIDERS)}")
         return value

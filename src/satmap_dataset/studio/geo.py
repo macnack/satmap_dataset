@@ -16,6 +16,14 @@ def utm_epsg_for_lon_lat(lon: float, lat: float) -> str:
     return f"EPSG:{32700 + zone}"
 
 
+def nad83_utm_epsg_for_lon_lat(lon: float, lat: float) -> str:
+    """Return the NAD83 UTM EPSG code (NAIP native CRS family) for a lon/lat point."""
+    zone = int((lon + 180.0) / 6.0) + 1
+    if lat >= 0:
+        return f"EPSG:{26900 + zone}"
+    return f"EPSG:{32700 + zone}"
+
+
 def square_side_meters(area_km2: float) -> float:
     if area_km2 <= 0:
         raise ValueError("area_km2 must be > 0")

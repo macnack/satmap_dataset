@@ -83,6 +83,8 @@ def _center_mode_srs_supported(srs: str) -> bool:
         return True
     if normalized.startswith("EPSG:326") or normalized.startswith("EPSG:327"):
         return True
+    if normalized.startswith("EPSG:269") and normalized[5:].isdigit():
+        return 26901 <= int(normalized[5:]) <= 26923
     return False
 
 
@@ -169,7 +171,8 @@ def _resolve_bbox_input(
         if not _center_mode_srs_supported(normalized_srs):
             raise typer.BadParameter(
                 "Center mode currently supports EPSG:2180, EPSG:3006, EPSG:3067, "
-                f"and WGS84 UTM zones (EPSG:326NN/327NN), got --srs {srs}."
+                "WGS84 UTM zones (EPSG:326NN/327NN), and NAD83 UTM zones "
+                f"(EPSG:26901-26923), got --srs {srs}."
             )
         try:
             if rect_supplied:
@@ -650,7 +653,7 @@ def index_command(
     provider: str = typer.Option(
         "geoportal",
         "--provider",
-        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+        help="Data provider: geoportal, lantmateriet, nls, sentinel2, lroc_nac, or naip.",
     ),
 ) -> None:
     try:
@@ -752,7 +755,7 @@ def download_command(
     provider: str = typer.Option(
         "geoportal",
         "--provider",
-        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+        help="Data provider: geoportal, lantmateriet, nls, sentinel2, lroc_nac, or naip.",
     ),
 ) -> None:
     try:
@@ -1019,7 +1022,7 @@ def run_command(
     provider: str = typer.Option(
         "geoportal",
         "--provider",
-        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+        help="Data provider: geoportal, lantmateriet, nls, sentinel2, lroc_nac, or naip.",
     ),
 ) -> None:
     try:
@@ -1964,7 +1967,10 @@ def nls_run_json(config_json: Path = typer.Argument(..., exists=True)) -> None:
 
 @app.command("raw-export")
 def raw_export_command(
-    provider: str = typer.Option("geoportal", help="geoportal|lantmateriet|nls (sentinel2 rejected)."),
+    provider: str = typer.Option(
+        "geoportal",
+        help="geoportal|lantmateriet|nls|lroc_nac (sentinel2/naip rejected).",
+    ),
     area: str = typer.Option(..., help="Area slug (output namespace under <raw_root>/<provider>/)."),
     download_root: Path = typer.Option(..., help="downloads_<slug> root with <year>/*.tif."),
     raw_root: Path | None = typer.Option(None, help="Shared sat_data_raw root (default: $SATMAP_RAW_ROOT or ~/sat_data_raw)."),
