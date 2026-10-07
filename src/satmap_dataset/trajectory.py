@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import math
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -14,25 +15,69 @@ class TrackPoint:
 
 
 def load_track(path: Path | str) -> list[TrackPoint]:
-    """Load a trajectory as WGS84 lat/lon points from a CSV, an IGC file, or a
-    directory containing exactly one ``*.igc``."""
+    """Load a trajectory as WGS84 lat/lon points.
+
+    Accepts ``.csv``, ``.igc``, MARS-LVIG-style ``gps.json``, a bare JSON list of
+    points, a directory with exactly one ``*.igc``, or a directory containing
+    ``gps.json`` / ``receiver/gps.json``.
+    """
     path = Path(path)
     if path.is_dir():
-        igc_files = sorted(path.glob("*.igc"))
-        if len(igc_files) != 1:
-            raise ValueError(
-                f"expected exactly one .igc file in {path}, found {len(igc_files)}"
-            )
-        path = igc_files[0]
+        path = _resolve_track_dir(path)
     suffix = path.suffix.lower()
     if suffix == ".igc":
         points = _load_igc(path)
     elif suffix == ".csv":
         points = _load_csv(path)
+    elif suffix == ".json":
+        points = _load_json(path)
     else:
-        raise ValueError(f"unsupported track format: {path.suffix!r} (use .csv or .igc)")
+        raise ValueError(
+            f"unsupported track format: {path.suffix!r} "
+            "(use .csv, .igc, or .json / gps.json)"
+        )
     if not points:
         raise ValueError(f"no track points parsed from {path}")
+    return points
+
+
+def _resolve_track_dir(path: Path) -> Path:
+    for candidate in (path / "gps.json", path / "receiver" / "gps.json"):
+        if candidate.is_file():
+            return candidate
+    igc_files = sorted(path.glob("*.igc"))
+    if len(igc_files) == 1:
+        return igc_files[0]
+    if len(igc_files) > 1:
+        raise ValueError(f"expected exactly one .igc file in {path}, found {len(igc_files)}")
+    raise ValueError(
+        f"no track found in {path} (need gps.json, receiver/gps.json, or a single .igc)"
+    )
+
+
+def _load_json(path: Path) -> list[TrackPoint]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(payload, dict) and isinstance(payload.get("items"), list):
+        rows = payload["items"]
+    elif isinstance(payload, list):
+        rows = payload
+    else:
+        raise ValueError(
+            f"JSON track must be a list or an object with an 'items' list, got {type(payload).__name__}"
+        )
+    points: list[TrackPoint] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        lower = {str(k).lower(): v for k, v in row.items()}
+        lat = lower.get("lat", lower.get("latitude"))
+        lon = lower.get("lon", lower.get("longitude"))
+        if lat is None or lon is None:
+            continue
+        try:
+            points.append(TrackPoint(lat=float(lat), lon=float(lon)))
+        except (TypeError, ValueError):
+            continue
     return points
 
 

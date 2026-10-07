@@ -6,7 +6,7 @@ from pathlib import Path
 
 from satmap_dataset.config import DownloadConfig, IndexConfig, TrajectoryConfig
 from satmap_dataset.models import CellEntry, TrajectoryManifest
-from satmap_dataset.pipeline import downloader, index_builder
+from satmap_dataset.providers import get_provider
 from satmap_dataset.trajectory import Cell, TrackPoint, load_track, select_cells
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,13 @@ def _bbox_str(bbox: tuple[float, float, float, float]) -> str:
 
 
 def _name_stem(track_path: Path) -> str:
-    return track_path.name if track_path.is_dir() else track_path.stem
+    if track_path.is_dir():
+        return track_path.name
+    if track_path.name.lower() == "gps.json" and track_path.parent.name.lower() == "receiver":
+        return track_path.parent.parent.name or track_path.stem
+    if track_path.name.lower() == "gps.json":
+        return track_path.parent.name or track_path.stem
+    return track_path.stem
 
 
 def _union_bbox(cells: list[Cell]) -> str:
@@ -122,6 +128,7 @@ def _download_cells(
     manifest: TrajectoryManifest,
     output_dir: Path,
 ) -> bool:
+    provider = get_provider(config.provider)
     any_ok = False
     for cell, entry in zip(cells, manifest.cells):
         cell_dir = output_dir / cell.name
@@ -139,13 +146,15 @@ def _download_cells(
                 year_end=config.year_end,
                 bbox=bbox,
                 srs=config.srs,
+                provider=config.provider,
+                provider_options=dict(config.provider_options),
                 output_json=cell_dir / "index_manifest.json",
                 year_availability_output_json=cell_dir / "year_availability_report.json",
             )
-            index_code, index_path = index_builder.run(index_config)
+            index_code, index_path = provider.index(index_config)
             if index_code != 0:
                 entry.download_status = "failed"
-                logger.error("Trajectory: index failed cell=%s", cell.name)
+                logger.error("Trajectory: index failed cell=%s provider=%s", cell.name, config.provider)
                 continue
             download_config = DownloadConfig(
                 index_manifest=index_path,
@@ -163,15 +172,17 @@ def _download_cells(
                 sleep_max=config.sleep_max,
                 overwrite=config.overwrite,
                 output_json=download_manifest,
+                provider=config.provider,
+                provider_options=dict(config.provider_options),
             )
-            download_code, _ = downloader.run(download_config)
+            download_code, _ = provider.download(download_config)
         except Exception:  # noqa: BLE001 - one cell's failure must not abort the run
             entry.download_status = "failed"
             logger.exception("Trajectory: cell raised, marking failed cell=%s", cell.name)
             continue
         if download_code != 0:
             entry.download_status = "failed"
-            logger.error("Trajectory: download failed cell=%s", cell.name)
+            logger.error("Trajectory: download failed cell=%s provider=%s", cell.name, config.provider)
             continue
         entry.download_status = "ok"
         any_ok = True

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -68,3 +69,41 @@ def test_load_empty_track_raises(tmp_path: Path):
     p.write_text("lat,lon\n", encoding="utf-8")
     with pytest.raises(ValueError):
         load_track(p)
+
+
+def test_load_mars_lvig_gps_json(tmp_path: Path):
+    p = tmp_path / "gps.json"
+    p.write_text(
+        json.dumps(
+            {
+                "items": [
+                    {"latitude": 22.416, "longitude": 114.043, "altitude": 30.0},
+                    {"latitude": 22.417, "longitude": 114.044, "altitude": 31.0},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    pts = load_track(p)
+    assert pts == [TrackPoint(22.416, 114.043), TrackPoint(22.417, 114.044)]
+
+
+def test_load_dir_finds_receiver_gps_json(tmp_path: Path):
+    recv = tmp_path / "HKairport01" / "receiver"
+    recv.mkdir(parents=True)
+    (recv / "gps.json").write_text(
+        json.dumps({"items": [{"latitude": 22.4, "longitude": 114.0}]}),
+        encoding="utf-8",
+    )
+    pts = load_track(tmp_path / "HKairport01")
+    assert pts == [TrackPoint(22.4, 114.0)]
+
+
+def test_load_gps_json_list_root(tmp_path: Path):
+    p = tmp_path / "track.json"
+    p.write_text(
+        json.dumps([{"lat": 1.0, "lon": 2.0}, {"latitude": 3.0, "longitude": 4.0}]),
+        encoding="utf-8",
+    )
+    pts = load_track(p)
+    assert pts == [TrackPoint(1.0, 2.0), TrackPoint(3.0, 4.0)]

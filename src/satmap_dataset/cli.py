@@ -2075,16 +2075,49 @@ def raw_test_manifest_command(
 
 @app.command("trajectory")
 def trajectory_cmd(
-    track: Path = typer.Option(..., "--track", help="Track file (.csv/.igc) or a directory with one .igc."),
+    track: Path = typer.Option(
+        ...,
+        "--track",
+        help="Track (.csv/.igc/.json gps.json) or a directory with gps.json / receiver/gps.json / one .igc.",
+    ),
     out: Path = typer.Option(..., "--out", help="Output directory for the manifest, preview, and downloads."),
     cell_km: float = typer.Option(1.0, "--cell-km", min=0.0001, help="Grid cell size in km."),
     year_start: int = typer.Option(2020, "--year-start"),
     year_end: int = typer.Option(2025, "--year-end"),
     download: bool = typer.Option(False, "--download/--no-download", help="Download source orthophoto for each window."),
     preview: bool = typer.Option(True, "--preview/--no-preview", help="Write a GeoJSON preview."),
+    provider: str = typer.Option(
+        "geoportal",
+        "--provider",
+        help="Orthophoto provider for --download (geoportal, landsd_hk, …).",
+    ),
+    srs: str = typer.Option(
+        "EPSG:2180",
+        "--srs",
+        help="Projected CRS for cell grid / download bbox (landsd_hk defaults to EPSG:3857).",
+    ),
+    mode: str = typer.Option("hybrid", "--mode", help="Acquisition mode (provider-specific)."),
+    zoom: int | None = typer.Option(
+        None,
+        "--zoom",
+        help="Optional tile zoom for landsd_hk (else derived from --gsd-m / defaults).",
+    ),
+    gsd_m: float | None = typer.Option(
+        None,
+        "--gsd-m",
+        help="Optional target GSD in metres for landsd_hk zoom selection.",
+    ),
 ) -> None:
     from satmap_dataset.config import TrajectoryConfig
     from satmap_dataset.pipeline import trajectory as trajectory_stage
+
+    provider_options: dict = {}
+    if zoom is not None:
+        provider_options["zoom"] = zoom
+    if gsd_m is not None:
+        provider_options["gsd_m"] = gsd_m
+    if provider == "landsd_hk" and "imagery_year" not in provider_options:
+        provider_options["imagery_year"] = year_end
 
     try:
         config = TrajectoryConfig(
@@ -2095,6 +2128,10 @@ def trajectory_cmd(
             year_end=year_end,
             download=download,
             preview=preview,
+            provider=provider,
+            srs=srs,
+            mode=mode,
+            provider_options=provider_options,
         )
         code, path = trajectory_stage.run(config)
     except (ValueError, RuntimeError, OSError) as exc:

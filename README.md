@@ -131,12 +131,22 @@ for `cell_mode: "world_window"`.
 
 ## Trajectory tiles
 
-GPS track → 1 km windows in EPSG:2180 (+ optional orthophoto download):
+GPS track → fixed-grid windows (+ optional orthophoto download). Tracks: `.csv`,
+`.igc`, MARS-LVIG `gps.json`, or a sequence dir with `receiver/gps.json`.
 
 ```bash
-python -m satmap_dataset.cli trajectory --track path/to/gps_001 --out trajectory_gps001
+# Poland (default geoportal, EPSG:2180)
 python -m satmap_dataset.cli trajectory --track path/to/gps_001 --out trajectory_gps001 --download
+
+# Hong Kong LandsD (~0.28 m @ z19) — overlay-ready GeoTIFF per cell
+python -m satmap_dataset.cli trajectory \
+  --track /path/to/HKairport01 \
+  --out trajectory_hkairport01 \
+  --provider landsd_hk --download --zoom 19 --cell-km 1.0
 ```
+
+Each cell writes `downloads/<year>/*.tif` (EPSG:3857 for `landsd_hk`) plus
+`trajectory_tiles.geojson` for QGIS overlay.
 
 ## Web UI
 

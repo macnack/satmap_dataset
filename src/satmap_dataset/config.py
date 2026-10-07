@@ -704,6 +704,15 @@ class TrajectoryConfig(BaseModel):
     sleep_min: float = Field(default=0.6, ge=0.0)
     sleep_max: float = Field(default=2.2, ge=0.0)
     overwrite: bool = False
+    provider: str = PROVIDER_GEOPORTAL
+    provider_options: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        if value not in ALLOWED_PROVIDERS:
+            raise ValueError(f"provider must be one of {sorted(ALLOWED_PROVIDERS)}")
+        return value
 
     @model_validator(mode="after")
     def _validate(self) -> "TrajectoryConfig":
@@ -711,6 +720,26 @@ class TrajectoryConfig(BaseModel):
             raise ValueError("year_end must be >= year_start")
         if self.sleep_max < self.sleep_min:
             raise ValueError("sleep_max must be >= sleep_min")
+        _validate_provider_srs(self.provider, self.srs)
+        if self.provider == PROVIDER_GEOPORTAL:
+            allowed_modes = {"wms_tiled", "wfs_render", "hybrid"}
+            if self.mode not in allowed_modes:
+                raise ValueError(
+                    f"mode must be one of {sorted(allowed_modes)} for provider=geoportal"
+                )
+        elif self.provider in {PROVIDER_LANTMATERIET, PROVIDER_SENTINEL2}:
+            allowed_modes = {"stac", "hybrid"}
+            if self.mode not in allowed_modes:
+                raise ValueError(
+                    f"mode must be one of {sorted(allowed_modes)} for provider={self.provider}"
+                )
+            if self.mode == "hybrid":
+                self.mode = "stac"
+        elif self.provider in TILE_SERVICE_PROVIDERS:
+            self.mode = _normalize_tile_service_mode(self.provider, self.mode)
+            # Tile providers project AOIs in metres (Web Mercator for landsd_hk).
+            if self.srs.upper() == "EPSG:2180" and self.provider == PROVIDER_LANDSD_HK:
+                self.srs = "EPSG:3857"
         return self
 
 

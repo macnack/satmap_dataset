@@ -1,0 +1,20 @@
+{
+  "track_path": "/media/maciej/fifek/mars_lvig/vio/HKairport01",
+  "output_dir": "trajectory_hkairport01",
+  "provider": "landsd_hk",
+  "srs": "EPSG:3857",
+  "mode": "wms_tiled",
+  "cell_km": 1.0,
+  "year_start": 2025,
+  "year_end": 2025,
+  "download": true,
+  "preview": true,
+  "concurrency": 6,
+  "sleep_min": 0.1,
+  "sleep_max": 0.4,
+  "provider_options": {
+    "imagery_year": 2025,
+    "zoom": 19,
+    "max_tiles": 2048
+  }
+}
