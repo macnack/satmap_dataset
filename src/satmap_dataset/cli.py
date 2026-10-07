@@ -2144,10 +2144,40 @@ def trajectory_cmd(
 def trajectory_json_cmd(
     config_json: Path = typer.Argument(..., help="JSON file mapped 1:1 onto TrajectoryConfig."),
 ) -> None:
+    import os
+    import re
+
     from satmap_dataset.config import TrajectoryConfig
     from satmap_dataset.pipeline import trajectory as trajectory_stage
 
     payload = _load_params_json_dict(config_json)
+
+    def _expand_env(value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        # ${VAR} or $VAR — used by mars_lvig trajectory configs.
+        expanded = re.sub(
+            r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}",
+            lambda m: os.environ.get(m.group(1), m.group(0)),
+            value,
+        )
+        if expanded.startswith("$") and "/" in expanded:
+            key, _, rest = expanded[1:].partition("/")
+            if key.isidentifier() and key in os.environ:
+                expanded = str(Path(os.environ[key]) / rest)
+        return expanded
+
+    for key in ("track_path", "output_dir"):
+        if key in payload:
+            payload[key] = _expand_env(payload[key])
+    # Default MARS_LVIG_ROOT if still unsubstituted.
+    track = str(payload.get("track_path", ""))
+    if "${MARS_LVIG_ROOT}" in track or track.startswith("$MARS_LVIG_ROOT"):
+        root = os.environ.get("MARS_LVIG_ROOT", "/media/maciej/fifek/mars_lvig")
+        payload["track_path"] = track.replace("${MARS_LVIG_ROOT}", root).replace(
+            "$MARS_LVIG_ROOT", root
+        )
+
     try:
         config = TrajectoryConfig(**payload)
         code, path = trajectory_stage.run(config)

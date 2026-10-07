@@ -117,6 +117,10 @@ just run-location-json \
   base_json=configs/run/base_landsd_hk.json
 ```
 
+MARS-LVIG four-site basemaps (HK LandsD + Armenia Ortho): see
+`configs/run/mars_lvig/` and `just mars-lvig-maps`.
+
+
 ## Advanced: gmix / raw-export (sat_roma handoff)
 
 Opt-in path for mixed-GSD co-registered cells (skips render):

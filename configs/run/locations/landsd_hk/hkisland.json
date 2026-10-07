@@ -1,0 +1,21 @@
+{
+  "location_name": "HK Island LandsD",
+  "center_lat": 22.2060,
+  "center_lon": 114.2600,
+  "area_km2": 0.25,
+  "provider": "landsd_hk",
+  "mode": "wms_tiled",
+  "srs": "EPSG:3857",
+  "target_srs": "EPSG:3857",
+  "px_per_meter": 3.333,
+  "year_start": 2024,
+  "year_end": 2025,
+  "min_years": 1,
+  "provider_options": {
+    "gsd_m": 0.3,
+    "imagery_year": 2025,
+    "zoom": 19,
+    "max_tiles": 512
+  },
+  "notes": "MARS-LVIG HKisland AOI. LandsD current mosaic ~0.28 m at z19."
+}

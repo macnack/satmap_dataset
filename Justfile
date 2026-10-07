@@ -142,3 +142,14 @@ trajectory-download track out cell_km="1.0" provider="geoportal" zoom="":
   extra=()
   if [[ -n "{{zoom}}" ]]; then extra+=(--zoom "{{zoom}}"); fi
   python -m satmap_dataset.cli trajectory --track {{track}} --out {{out}} --cell-km {{cell_km}} --provider {{provider}} --download "${extra[@]}"
+
+# MARS-LVIG: download basemaps for all 4 places (HK LandsD + Armenia Ortho 20cm)
+# Requires MARS_LVIG_ROOT (default /media/maciej/fifek/mars_lvig)
+mars-lvig-maps out="mars_lvig_maps" only="":
+  #!/usr/bin/env bash
+  set -euo pipefail
+  extra=()
+  if [[ -n "{{only}}" ]]; then extra+=(--only {{only}}); fi
+  python scripts/download_mars_lvig_maps.py \
+    --config configs/run/mars_lvig/places.json \
+    --out {{out}} "${extra[@]}"
