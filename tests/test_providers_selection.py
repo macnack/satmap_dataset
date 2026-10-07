@@ -53,3 +53,13 @@ def test_get_provider_returns_nls() -> None:
     assert isinstance(provider, Provider)
     assert provider.name == "nls"
     assert provider.default_target_srs == "EPSG:3067"
+
+
+def test_get_provider_returns_landsd_hk() -> None:
+    from satmap_dataset.providers.landsd_hk import LandsdHkProvider
+
+    provider = get_provider("landsd_hk")
+    assert isinstance(provider, LandsdHkProvider)
+    assert isinstance(provider, Provider)
+    assert provider.name == "landsd_hk"
+    assert provider.default_target_srs == "EPSG:3857"

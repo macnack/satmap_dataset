@@ -37,6 +37,11 @@ PROVIDER_PRESETS: dict[str, dict[str, str]] = {
         "srs": "EPSG:32633",
         "target_srs": "EPSG:32633",
     },
+    "landsd_hk": {
+        "base_json": "configs/run/base_landsd_hk.json",
+        "srs": "EPSG:3857",
+        "target_srs": "EPSG:3857",
+    },
 }
 
 

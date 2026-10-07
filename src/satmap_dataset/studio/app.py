@@ -246,6 +246,7 @@ def _tab_location() -> None:
                 "lantmateriet": "Sweden — Lantmäteriet",
                 "nls": "Finland — NLS (API key)",
                 "sentinel2": "Sentinel-2 (no token)",
+                "landsd_hk": "Hong Kong — LandsD Imagery (experimental)",
             }.get(p, p),
             help=PROVIDER,
         )
@@ -256,6 +257,9 @@ def _tab_location() -> None:
                 st.session_state["run_dem"] = False
             elif st.session_state["provider"] == "nls":
                 st.session_state["mode"] = "hybrid"
+                st.session_state["run_dem"] = False
+            elif st.session_state["provider"] == "landsd_hk":
+                st.session_state["mode"] = "wms_tiled"
                 st.session_state["run_dem"] = False
             else:
                 st.session_state["mode"] = "hybrid"

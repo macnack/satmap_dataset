@@ -650,7 +650,7 @@ def index_command(
     provider: str = typer.Option(
         "geoportal",
         "--provider",
-        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+        help="Data provider: geoportal, lantmateriet, nls, sentinel2, lroc_nac, or landsd_hk (experimental; see docs/DATA_LICENSING.md).",
     ),
 ) -> None:
     try:
@@ -752,7 +752,7 @@ def download_command(
     provider: str = typer.Option(
         "geoportal",
         "--provider",
-        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+        help="Data provider: geoportal, lantmateriet, nls, sentinel2, lroc_nac, or landsd_hk (experimental; see docs/DATA_LICENSING.md).",
     ),
 ) -> None:
     try:
@@ -1019,7 +1019,7 @@ def run_command(
     provider: str = typer.Option(
         "geoportal",
         "--provider",
-        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+        help="Data provider: geoportal, lantmateriet, nls, sentinel2, lroc_nac, or landsd_hk (experimental; see docs/DATA_LICENSING.md).",
     ),
 ) -> None:
     try:

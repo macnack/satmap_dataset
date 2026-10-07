@@ -44,6 +44,7 @@ def test_cli_subcommand_help_lists_provider_option(subcommand: str) -> None:
     assert "--provider" in flat
     assert "geoportal" in flat
     assert "lantmateriet" in flat
+    assert "landsd_hk" in flat
 
 
 def test_cli_index_rejects_unknown_provider() -> None:
