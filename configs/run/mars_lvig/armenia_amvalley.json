@@ -1,0 +1,17 @@
+{
+  "name": "AMvalley",
+  "provider": "cadastre_am",
+  "track_npz": "${MARS_LVIG_ROOT}/streams/AMvalley01.npz",
+  "output_dir": "mars_lvig_maps/AMvalley",
+  "year": 2021,
+  "layer": "Ortho_2021_20cm",
+  "wms_base": "https://geoportal.am/gs/Ortho_2021/wms",
+  "srs": "EPSG:3857",
+  "gsd_m": 0.25,
+  "max_px": 2048,
+  "pad_m": 80,
+  "write_overlay": true,
+  "write_geojson": true,
+  "sequences": ["AMvalley01", "AMvalley02", "AMvalley03"],
+  "notes": "Armenia Cadastre Ortho 2021 at 20 cm. GPS from MARS-LVIG streams npz (lat,lon,alt)."
+}

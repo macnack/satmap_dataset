@@ -1,0 +1,90 @@
+{
+  "mars_lvig_root_env": "MARS_LVIG_ROOT",
+  "mars_lvig_root_default": "/media/maciej/fifek/mars_lvig",
+  "places": [
+    {
+      "name": "HKairport",
+      "provider": "landsd_hk",
+      "track": "vio/HKairport01",
+      "sequences": [
+        "HKairport01",
+        "HKairport02",
+        "HKairport03",
+        "HKairport_GNSS01",
+        "HKairport_GNSS02",
+        "HKairport_GNSS03"
+      ],
+      "center_lat": 22.4159,
+      "center_lon": 114.0429,
+      "year_start": 2025,
+      "year_end": 2025,
+      "cell_km": 1.0,
+      "provider_options": {
+        "imagery_year": 2025,
+        "zoom": 19,
+        "max_tiles": 2048,
+        "gsd_m": 0.3
+      },
+      "sleep_min": 0.05,
+      "sleep_max": 0.25,
+      "concurrency": 8
+    },
+    {
+      "name": "HKisland",
+      "provider": "landsd_hk",
+      "track": "vio/HKisland01",
+      "sequences": [
+        "HKisland01",
+        "HKisland02",
+        "HKisland03",
+        "HKisland_GNSS01",
+        "HKisland_GNSS02",
+        "HKisland_GNSS03"
+      ],
+      "center_lat": 22.2060,
+      "center_lon": 114.2600,
+      "year_start": 2025,
+      "year_end": 2025,
+      "cell_km": 1.0,
+      "provider_options": {
+        "imagery_year": 2025,
+        "zoom": 19,
+        "max_tiles": 2048,
+        "gsd_m": 0.3
+      },
+      "sleep_min": 0.05,
+      "sleep_max": 0.25,
+      "concurrency": 8
+    },
+    {
+      "name": "AMtown",
+      "provider": "cadastre_am",
+      "track_npz": "streams/AMtown01.npz",
+      "sequences": ["AMtown01", "AMtown02", "AMtown03"],
+      "center_lat": 39.922,
+      "center_lon": 44.828,
+      "year": 2021,
+      "layer": "Ortho_2021_20cm",
+      "gsd_m": 0.25,
+      "max_px": 2048,
+      "pad_m": 80,
+      "wms_base": "https://geoportal.am/gs/Ortho_2021/wms",
+      "notes": "AM = Armenia. 10 cm / Yerevan layers do not cover this AOI; use Ortho_2021_20cm."
+    },
+    {
+      "name": "AMvalley",
+      "provider": "cadastre_am",
+      "track_npz": "streams/AMvalley01.npz",
+      "sequences": ["AMvalley01", "AMvalley02", "AMvalley03"],
+      "center_lat": 39.946,
+      "center_lon": 44.896,
+      "year": 2021,
+      "layer": "Ortho_2021_20cm",
+      "gsd_m": 0.25,
+      "max_px": 2048,
+      "pad_m": 80,
+      "wms_base": "https://geoportal.am/gs/Ortho_2021/wms",
+      "notes": "AM = Armenia. Rural Ortho 20 cm mosaic."
+    }
+  ]
+}

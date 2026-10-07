@@ -9,7 +9,7 @@ manifests at every stage.
 ## Features
 
 - Pipeline: **index → download → render → validate** (optional DEM / OSM / raw-export)
-- Providers: Geoportal (PL), Lantmäteriet (SE), NLS (FI), Sentinel-2, LROC NAC (lunar)
+- Providers: Geoportal (PL), Lantmäteriet (SE), NLS (FI), Sentinel-2, LROC NAC (lunar), LandsD HK
 - Shared NN-ready grid (`RGB_U8` GeoTIFF) with Pydantic manifest contracts
 - Location JSON + `just` recipes for batch runs
 - Optional Streamlit UI (`satmap-studio`)
@@ -23,6 +23,7 @@ manifests at every stage.
 | `nls` | **Supported** | Finnish WCS; API key required; dedicated `nls-*-json` CLIs stop at download |
 | `sentinel2` | **Experimental** | Earth Search COGs; set `target_srs` / GDAL for cross-CRS |
 | `lroc_nac` | **Deferred** | PDS index + download only; ISIS projection/render out of scope |
+| `landsd_hk` | **Experimental** | HK LandsD Imagery XYZ current mosaic (~0.28 m at z19); EPSG:3857 stitch. See [DATA_LICENSING](docs/DATA_LICENSING.md) and [docs/providers/landsd_hk.md](docs/providers/landsd_hk.md) |
 
 ## Quick start
 
@@ -106,6 +107,20 @@ representative scene per year via `provider_options` (cloud cover, target DOY).
 
 **LROC NAC** — lunar CRS `IAU_2015:30100`; index/download only until projection lands.
 
+**LandsD HK (experimental)** — current Imagery Map API mosaic (not multi-year).
+Sample under `configs/run/locations/landsd_hk/` so batch `*-all-location-json`
+over `configs/run/locations/` never hits LandsD by accident:
+
+```bash
+just run-location-json \
+  location_json=configs/run/locations/landsd_hk/hkairport.json \
+  base_json=configs/run/base_landsd_hk.json
+```
+
+MARS-LVIG four-site basemaps (HK LandsD + Armenia Ortho): see
+`configs/run/mars_lvig/` and `just mars-lvig-maps`.
+
+
 ## Advanced: gmix / raw-export (sat_roma handoff)
 
 Opt-in path for mixed-GSD co-registered cells (skips render):
@@ -120,12 +135,22 @@ for `cell_mode: "world_window"`.
 
 ## Trajectory tiles
 
-GPS track → 1 km windows in EPSG:2180 (+ optional orthophoto download):
+GPS track → fixed-grid windows (+ optional orthophoto download). Tracks: `.csv`,
+`.igc`, MARS-LVIG `gps.json`, or a sequence dir with `receiver/gps.json`.
 
 ```bash
-python -m satmap_dataset.cli trajectory --track path/to/gps_001 --out trajectory_gps001
+# Poland (default geoportal, EPSG:2180)
 python -m satmap_dataset.cli trajectory --track path/to/gps_001 --out trajectory_gps001 --download
+
+# Hong Kong LandsD (~0.28 m @ z19) — overlay-ready GeoTIFF per cell
+python -m satmap_dataset.cli trajectory \
+  --track /path/to/HKairport01 \
+  --out trajectory_hkairport01 \
+  --provider landsd_hk --download --zoom 19 --cell-km 1.0
 ```
+
+Each cell writes `downloads/<year>/*.tif` (EPSG:3857 for `landsd_hk`) plus
+`trajectory_tiles.geojson` for QGIS overlay.
 
 ## Web UI
 
@@ -157,7 +182,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). CI runs on Python 3.10–3.12 with libvi
 
 ## Acknowledgments
 
-Polish GUGiK / Geoportal, Lantmäteriet, Maanmittauslaitos (NLS), Copernicus
+Polish GUGiK / Geoportal, Lantmäteriet, Maanmittauslaitos (NLS), Lands Department (HK), Copernicus
 Sentinel program, NASA LROC / PDS, OpenStreetMap contributors. Raw-tile ingest
 core is ported from sat_roma (`romatch/datasets/raw_tiles.py`) with a satmap-only
 `world_window` extension.

@@ -38,4 +38,4 @@ Construct via Pydantic models in `config.py`. New fields must default-resolve wh
 
 ## Providers
 
-RGB acquisition: `providers.get_provider(name)`. Registry includes geoportal, lantmateriet, sentinel2, lroc_nac, nls.
+RGB acquisition: `providers.get_provider(name)`. Registry includes geoportal, lantmateriet, sentinel2, lroc_nac, nls, landsd_hk.

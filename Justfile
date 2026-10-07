@@ -131,10 +131,25 @@ gmix location_json="configs/run/locations/wroclaw_15km2.json" base_json="configs
 raw-test-manifest min_years="2":
   my="{{min_years}}"; my="${my#min_years=}"; python -m satmap_dataset.cli raw-test-manifest --min-years "$my"
 
-# Trajectory -> 1km grid windows the GPS track crosses (manifest + GeoJSON preview)
-trajectory track out cell_km="1.0":
-  python -m satmap_dataset.cli trajectory --track {{track}} --out {{out}} --cell-km {{cell_km}} --no-download
+# Trajectory -> grid windows the GPS track crosses (manifest + GeoJSON preview)
+trajectory track out cell_km="1.0" provider="geoportal":
+  python -m satmap_dataset.cli trajectory --track {{track}} --out {{out}} --cell-km {{cell_km}} --provider {{provider}} --no-download
 
-# Same, plus download source orthophoto (2020-2025) for each window
-trajectory-download track out cell_km="1.0":
-  python -m satmap_dataset.cli trajectory --track {{track}} --out {{out}} --cell-km {{cell_km}} --download
+# Same + download orthophoto (geoportal default; use provider=landsd_hk zoom=19 for HK)
+trajectory-download track out cell_km="1.0" provider="geoportal" zoom="":
+  #!/usr/bin/env bash
+  set -euo pipefail
+  extra=()
+  if [[ -n "{{zoom}}" ]]; then extra+=(--zoom "{{zoom}}"); fi
+  python -m satmap_dataset.cli trajectory --track {{track}} --out {{out}} --cell-km {{cell_km}} --provider {{provider}} --download "${extra[@]}"
+
+# MARS-LVIG: download basemaps for all 4 places (HK LandsD + Armenia Ortho 20cm)
+# Requires MARS_LVIG_ROOT (default /media/maciej/fifek/mars_lvig)
+mars-lvig-maps out="mars_lvig_maps" only="":
+  #!/usr/bin/env bash
+  set -euo pipefail
+  extra=()
+  if [[ -n "{{only}}" ]]; then extra+=(--only {{only}}); fi
+  python scripts/download_mars_lvig_maps.py \
+    --config configs/run/mars_lvig/places.json \
+    --out {{out}} "${extra[@]}"

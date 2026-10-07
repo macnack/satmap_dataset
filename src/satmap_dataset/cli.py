@@ -650,7 +650,7 @@ def index_command(
     provider: str = typer.Option(
         "geoportal",
         "--provider",
-        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+        help="Data provider: geoportal, lantmateriet, nls, sentinel2, lroc_nac, or landsd_hk (experimental; see docs/DATA_LICENSING.md).",
     ),
 ) -> None:
     try:
@@ -752,7 +752,7 @@ def download_command(
     provider: str = typer.Option(
         "geoportal",
         "--provider",
-        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+        help="Data provider: geoportal, lantmateriet, nls, sentinel2, lroc_nac, or landsd_hk (experimental; see docs/DATA_LICENSING.md).",
     ),
 ) -> None:
     try:
@@ -1019,7 +1019,7 @@ def run_command(
     provider: str = typer.Option(
         "geoportal",
         "--provider",
-        help="Data provider: geoportal (Polish PZGiK) or lantmateriet (Sweden STAC).",
+        help="Data provider: geoportal, lantmateriet, nls, sentinel2, lroc_nac, or landsd_hk (experimental; see docs/DATA_LICENSING.md).",
     ),
 ) -> None:
     try:
@@ -2075,16 +2075,49 @@ def raw_test_manifest_command(
 
 @app.command("trajectory")
 def trajectory_cmd(
-    track: Path = typer.Option(..., "--track", help="Track file (.csv/.igc) or a directory with one .igc."),
+    track: Path = typer.Option(
+        ...,
+        "--track",
+        help="Track (.csv/.igc/.json gps.json) or a directory with gps.json / receiver/gps.json / one .igc.",
+    ),
     out: Path = typer.Option(..., "--out", help="Output directory for the manifest, preview, and downloads."),
     cell_km: float = typer.Option(1.0, "--cell-km", min=0.0001, help="Grid cell size in km."),
     year_start: int = typer.Option(2020, "--year-start"),
     year_end: int = typer.Option(2025, "--year-end"),
     download: bool = typer.Option(False, "--download/--no-download", help="Download source orthophoto for each window."),
     preview: bool = typer.Option(True, "--preview/--no-preview", help="Write a GeoJSON preview."),
+    provider: str = typer.Option(
+        "geoportal",
+        "--provider",
+        help="Orthophoto provider for --download (geoportal, landsd_hk, …).",
+    ),
+    srs: str = typer.Option(
+        "EPSG:2180",
+        "--srs",
+        help="Projected CRS for cell grid / download bbox (landsd_hk defaults to EPSG:3857).",
+    ),
+    mode: str = typer.Option("hybrid", "--mode", help="Acquisition mode (provider-specific)."),
+    zoom: int | None = typer.Option(
+        None,
+        "--zoom",
+        help="Optional tile zoom for landsd_hk (else derived from --gsd-m / defaults).",
+    ),
+    gsd_m: float | None = typer.Option(
+        None,
+        "--gsd-m",
+        help="Optional target GSD in metres for landsd_hk zoom selection.",
+    ),
 ) -> None:
     from satmap_dataset.config import TrajectoryConfig
     from satmap_dataset.pipeline import trajectory as trajectory_stage
+
+    provider_options: dict = {}
+    if zoom is not None:
+        provider_options["zoom"] = zoom
+    if gsd_m is not None:
+        provider_options["gsd_m"] = gsd_m
+    if provider == "landsd_hk" and "imagery_year" not in provider_options:
+        provider_options["imagery_year"] = year_end
 
     try:
         config = TrajectoryConfig(
@@ -2095,6 +2128,10 @@ def trajectory_cmd(
             year_end=year_end,
             download=download,
             preview=preview,
+            provider=provider,
+            srs=srs,
+            mode=mode,
+            provider_options=provider_options,
         )
         code, path = trajectory_stage.run(config)
     except (ValueError, RuntimeError, OSError) as exc:
@@ -2107,10 +2144,40 @@ def trajectory_cmd(
 def trajectory_json_cmd(
     config_json: Path = typer.Argument(..., help="JSON file mapped 1:1 onto TrajectoryConfig."),
 ) -> None:
+    import os
+    import re
+
     from satmap_dataset.config import TrajectoryConfig
     from satmap_dataset.pipeline import trajectory as trajectory_stage
 
     payload = _load_params_json_dict(config_json)
+
+    def _expand_env(value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        # ${VAR} or $VAR — used by mars_lvig trajectory configs.
+        expanded = re.sub(
+            r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}",
+            lambda m: os.environ.get(m.group(1), m.group(0)),
+            value,
+        )
+        if expanded.startswith("$") and "/" in expanded:
+            key, _, rest = expanded[1:].partition("/")
+            if key.isidentifier() and key in os.environ:
+                expanded = str(Path(os.environ[key]) / rest)
+        return expanded
+
+    for key in ("track_path", "output_dir"):
+        if key in payload:
+            payload[key] = _expand_env(payload[key])
+    # Default MARS_LVIG_ROOT if still unsubstituted.
+    track = str(payload.get("track_path", ""))
+    if "${MARS_LVIG_ROOT}" in track or track.startswith("$MARS_LVIG_ROOT"):
+        root = os.environ.get("MARS_LVIG_ROOT", "/media/maciej/fifek/mars_lvig")
+        payload["track_path"] = track.replace("${MARS_LVIG_ROOT}", root).replace(
+            "$MARS_LVIG_ROOT", root
+        )
+
     try:
         config = TrajectoryConfig(**payload)
         code, path = trajectory_stage.run(config)
